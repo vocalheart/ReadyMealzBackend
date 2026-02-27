@@ -16,7 +16,7 @@ const database  = require('./database/db');
 database();
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'],
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://www.readymealz.in'],
     methods: ["GET", "POST", "PUT", "PATCH", "OPTION"],
     credentials: true
 }))
