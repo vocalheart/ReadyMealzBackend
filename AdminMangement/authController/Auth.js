@@ -8,6 +8,60 @@ const adminAuth = require('../../middleware/adminMiddleware');      // verifies 
 const adminRole = require('../../middleware/adminRole');          // checks role
 
 /* =============================================
+   GET ALL ADMINS - Superadmin only - with pagination
+   GET /admin?page=1&limit=10
+============================================= */
+router.get('/', adminAuth, adminRole('superadmin'), async (req, res) => {
+  try {
+    let { page = 1, limit = 10 } = req.query;
+
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    if (isNaN(page) || page < 1) page = 1;
+    if (isNaN(limit) || limit < 1 || limit > 50) limit = 10; // reasonable max
+
+    const skip = (page - 1) * limit;
+
+    const [admins, total] = await Promise.all([
+      Admin.find({})
+        .select('-password')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Admin.countDocuments(),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    const baseUrl = `${req.protocol}://${req.get('host')}${req.baseUrl}${req.path}`;
+
+    const response = {
+      success: true,
+      admins,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        count: admins.length,
+        next: page < totalPages
+          ? `${baseUrl}?page=${page + 1}&limit=${limit}`
+          : null,
+        previous: page > 1
+          ? `${baseUrl}?page=${page - 1}&limit=${limit}`
+          : null,
+      },
+    };
+
+    return res.json(response);
+  } catch (err) {
+    console.error('GET ADMINS ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+/* =============================================
    ADMIN SIGNUP - Superadmin only
    POST /admin/signup
    Body: { name, email, password, role? ("admin"|"superadmin") }

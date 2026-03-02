@@ -22,7 +22,6 @@ router.post(
     try {
       let { name, slug, description } = req.body;
 
-      // Validation
       if (!name || !slug) {
         return res.status(400).json({
           success: false,
@@ -33,7 +32,6 @@ router.post(
       name = name.trim();
       slug = slug.toLowerCase().trim();
 
-      // Duplicate Check
       const existingCategory = await Category.findOne({
         $or: [{ name }, { slug }],
       });
@@ -68,7 +66,7 @@ router.post(
 );
 
 /* =========================================
-   GET CATEGORY BY SLUG (IMPORTANT: BEFORE :id)
+   GET CATEGORY BY SLUG (before :id)
 ========================================= */
 router.get('/slug/:slug', async (req, res) => {
   try {
@@ -99,21 +97,19 @@ router.get('/slug/:slug', async (req, res) => {
 });
 
 /* =========================================
-   GET ALL CATEGORIES (Pagination + Search)
+   GET ALL CATEGORIES - with Pagination + next/prev links
 ========================================= */
 router.get('/', async (req, res) => {
   try {
     let { page = 1, limit = 10, search = "" } = req.query;
 
-    // Convert to numbers (avoid 500 error)
     page = parseInt(page);
     limit = parseInt(limit);
 
-    if (page < 1) page = 1;
-    if (limit < 1 || limit > 100) limit = 10;
+    if (isNaN(page) || page < 1) page = 1;
+    if (isNaN(limit) || limit < 1 || limit > 100) limit = 10;
 
     const query = {};
-
     if (search && search.trim() !== "") {
       query.name = { $regex: search.trim(), $options: "i" };
     }
@@ -122,20 +118,43 @@ router.get('/', async (req, res) => {
       Category.find(query)
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
-        .limit(limit),
+        .limit(limit)
+        .lean(), // slightly faster
       Category.countDocuments(query),
     ]);
 
-    return res.status(200).json({
+    const totalPages = Math.ceil(total / limit);
+    const baseUrl = `${req.protocol}://${req.get('host')}${req.baseUrl}${req.path}`;
+
+    // Build next & previous links (only if they exist)
+    const nextPage = page < totalPages ? page + 1 : null;
+    const prevPage = page > 1 ? page - 1 : null;
+
+    const response = {
       success: true,
       total,
       page,
-      pages: Math.ceil(total / limit),
+      limit,
+      totalPages,
       count: categories.length,
       categories,
-    });
+      pagination: {
+        next: nextPage
+          ? `${baseUrl}?page=${nextPage}&limit=${limit}${
+              search ? `&search=${encodeURIComponent(search)}` : ''
+            }`
+          : null,
+        previous: prevPage
+          ? `${baseUrl}?page=${prevPage}&limit=${limit}${
+              search ? `&search=${encodeURIComponent(search)}` : ''
+            }`
+          : null,
+      },
+    };
+
+    return res.status(200).json(response);
   } catch (error) {
-    console.error("GET ALL CATEGORY ERROR:", error);
+    console.error("GET ALL CATEGORIES ERROR:", error);
     return res.status(500).json({
       success: false,
       message: "Error fetching categories",
@@ -144,13 +163,12 @@ router.get('/', async (req, res) => {
 });
 
 /* =========================================
-   GET CATEGORY BY ID (500 SAFE)
+   GET CATEGORY BY ID
 ========================================= */
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Prevent Mongo CastError (major 500 cause)
     if (!isValidObjectId(id)) {
       return res.status(400).json({
         success: false,
@@ -181,7 +199,7 @@ router.get('/:id', async (req, res) => {
 });
 
 /* =========================================
-   UPDATE CATEGORY (PUT) - 500 SAFE
+   UPDATE CATEGORY (PUT)
 ========================================= */
 router.put(
   '/:id',
@@ -211,7 +229,6 @@ router.put(
       if (name) name = name.trim();
       if (slug) slug = slug.toLowerCase().trim();
 
-      // Duplicate check on update
       if (name || slug) {
         const duplicate = await Category.findOne({
           _id: { $ne: id },
@@ -253,7 +270,6 @@ router.put(
 
 /* =========================================
    DELETE CATEGORY (SUPERADMIN ONLY)
-   500 SAFE + ID VALIDATION
 ========================================= */
 router.delete(
   '/:id',
