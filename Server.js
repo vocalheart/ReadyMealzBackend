@@ -15,7 +15,8 @@ const database  = require('./database/db');
 database();
 // origgin 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://www.readymealz.in', 'https://adminpannelready-mealz.vercel.app'],
+    origin: ['http://localhost:3000', 'http://localhost:3001', 
+        'https://www.readymealz.in', 'https://adminpannelready-mealz.vercel.app', 'https://admin.readymealz.in'],
     methods: ["GET", "POST", "PUT", "PATCH", "OPTION"],
     credentials: true,
 }));
