@@ -1,65 +1,98 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
 
-const adminAuth = require('../../middleware/adminMiddleware');
-const adminRole = require('../../middleware/adminRole');
+const adminAuth = require('../../middleware/adminMiddleware');      // verifies JWT & attaches req.admin
+const adminRole = require('../../middleware/adminRole');          // checks role
 
-/* =========================
-   ADMIN SIGNUP (SuperAdmin Only)
-========================= */
-router.post('/signup',adminAuth,adminRole('superadmin'),  async (req, res) => {
-    try {
-      const { name, email, password, role } = req.body;
-      const existingAdmin = await Admin.findOne({ email });
-      if (existingAdmin) {
-        return res.status(400).json({success: false,message: 'Email already exists'});
-      }
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const admin = await Admin.create({
-        name,
-        email,
-        password: hashedPassword,
-        role: role || 'admin',
-      });
-      res.status(201).json({success: true,message: 'Admin created successfully',admin});
-    } catch (error) {
-      res.status(500).json({success: false,error: error.message});
+/* =============================================
+   ADMIN SIGNUP - Superadmin only
+   POST /admin/signup
+   Body: { name, email, password, role? ("admin"|"superadmin") }
+============================================= */
+router.post('/signup', adminAuth, adminRole('superadmin' , 'admin'), async (req, res) => {
+  try {
+    const { name, email, password, role } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Name, email and password are required' });
     }
+
+    const existing = await Admin.findOne({ email });
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'Email already exists' });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+
+    const newAdmin = await Admin.create({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      password: hashed,
+      role: role === 'superadmin' ? 'superadmin' : 'admin', // only allow superadmin role if explicitly set
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Admin created successfully',
+      admin: {
+        id: newAdmin._id,
+        name: newAdmin.name,
+        email: newAdmin.email,
+        role: newAdmin.role,
+      },
+    });
+  } catch (err) {
+    console.error('ADMIN SIGNUP ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
-);
-/* ========================
-   ADMIN LOGIN (PUBLIC)
-========================= */
+});
+
+/* =============================================
+   ADMIN LOGIN - Public
+   POST /admin/login
+   Body: { email, password }
+   Sets httpOnly cookie 'token'
+============================================= */
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    const admin = await Admin.findOne({ email });
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email and password required' });
+    }
+
+    const admin = await Admin.findOne({ email: email.trim().toLowerCase() });
     if (!admin) {
-      return res.status(404).json({success: false,message: 'Admin not found'});
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
-    //  Block check
+
     if (admin.isBlocked) {
-      return res.status(403).json({success: false,message: 'Your account is blocked by Super Admin'});
+      return res.status(403).json({ success: false, message: 'Account is blocked' });
     }
-    const isMatch = await bcrypt.compare(password, admin.password);
-    if (!isMatch) {
-      return res.status(401).json({success: false,message: 'Invalid password'});
+
+    const match = await bcrypt.compare(password, admin.password);
+    if (!match) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
-    //  Generate JWT Token
-    const token = jwt.sign({ id: admin._id, role: admin.role }, process.env.JWT_SECRET || 'SECRET_KEY', { expiresIn: '7d' });
-    //  Store token in cookie (VERY IMPORTANT)
+
+    const token = jwt.sign(
+      { id: admin._id, role: admin.role },
+      process.env.JWT_SECRET || 'fallback-secret-change-me',
+      { expiresIn: '7d' }
+    );
+
     res.cookie('token', token, {
       httpOnly: true,
-      secure: false, // true in production (HTTPS)
-      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    res.status(200).json({
+
+    return res.status(200).json({
       success: true,
-      message: 'Admin login successful',
+      message: 'Login successful',
       admin: {
         id: admin._id,
         name: admin.name,
@@ -67,93 +100,152 @@ router.post('/login', async (req, res) => {
         role: admin.role,
       },
     });
-  } catch (error) {
-    console.error('Admin Login Error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+  } catch (err) {
+    console.error('ADMIN LOGIN ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-/* =========================
-   BLOCK ADMIN (SuperAdmin Only)
-========================= */
-router.put('/block/:id',adminAuth,adminRole('superadmin'), 
-  async (req, res) => {
-    try {
-      const admin = await Admin.findByIdAndUpdate( req.params.id, { isBlocked: true },{ new: true });
-      res.json({success: true,message: 'Admin blocked successfully',admin});
-    } catch (error) {
-      res.status(500).json({success: false,error: error.message});
-    }
-  }
-);
-
-/* =========================
-   UNBLOCK ADMIN (SuperAdmin Only)
-========================= */
-router.put('/unblock/:id',adminAuth,adminRole('superadmin'),async (req, res) => {
-    try {
-      const admin = await Admin.findByIdAndUpdate(req.params.id,{ isBlocked: false },{ new: true });
-      res.json({success: true, message: 'Admin unblocked successfully', admin, });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error.message,
-      });
-    }
-  }
-);
-/* =========================
-   GET CURRENT ADMIN (AUTH.ME)
-   Verify token from cookie
-========================= */
-router.get('/me', adminAuth, async (req, res) => {
+/* =============================================
+   GET ALL ADMINS - Superadmin only (list for management)
+   GET /admin
+============================================= */
+router.get('/', adminAuth, adminRole('superadmin'), async (req, res) => {
   try {
-    // adminAuth middleware already verified token
-    // and attached req.admin
-    res.status(200).json({
-      success: true,
-      message: 'Admin authenticated',
-      admin: {
-        id: req.admin._id,
-        name: req.admin.name,
-        email: req.admin.email,
-        role: req.admin.role,
-      },
-    });
-  } catch (error) {
-    console.error('Auth Me Error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch admin data',
-    });
+    const admins = await Admin.find({})
+      .select('-password')
+      .sort({ createdAt: -1 });
+    return res.json({ success: true, admins });
+  } catch (err) {
+    console.error('GET ADMINS ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-/* =========================
-   ADMIN LOGOUT (CLEAR COOKIE)
-========================= */
-router.post('/logout', adminAuth, (req, res) => {
+/* =============================================
+   UPDATE ADMIN (role + name/email optional) - Superadmin only
+   PUT /admin/:id
+   Body: { name?, email?, role? }
+============================================= */
+router.put('/:id', adminAuth, adminRole('superadmin'), async (req, res) => {
   try {
-    res.clearCookie('token', {
-      httpOnly: true,
-      secure: false, // true in production (HTTPS)
-      sameSite: 'lax',
+    const { id } = req.params;
+    const { name, email, role } = req.body;
+
+    if (!['admin', 'superadmin'].includes(role) && role !== undefined) {
+      return res.status(400).json({ success: false, message: 'Invalid role' });
+    }
+
+    const updateData = {};
+    if (name) updateData.name = name.trim();
+    if (email) updateData.email = email.trim().toLowerCase();
+    if (role) updateData.role = role;
+
+    const updated = await Admin.findByIdAndUpdate(id, updateData, {
+      new: true,
+      runValidators: true,
+      select: '-password',
     });
 
-    res.status(200).json({
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Admin not found' });
+    }
+
+    return res.json({
       success: true,
-      message: 'Admin logged out successfully',
+      message: 'Admin updated',
+      admin: updated,
     });
-  } catch (error) {
-    console.error('Logout Error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Logout failed',
-    });
+  } catch (err) {
+    console.error('UPDATE ADMIN ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
+});
+
+/* =============================================
+   DELETE ADMIN - Superadmin only (cannot delete self)
+   DELETE /admin/:id
+============================================= */
+router.delete('/:id', adminAuth, adminRole('superadmin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (id === req.admin._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Cannot delete your own account' });
+    }
+
+    const admin = await Admin.findById(id);
+    if (!admin) {
+      return res.status(404).json({ success: false, message: 'Admin not found' });
+    }
+
+    await Admin.findByIdAndDelete(id);
+
+    return res.json({ success: true, message: 'Admin deleted successfully' });
+  } catch (err) {
+    console.error('DELETE ADMIN ERROR:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+/* =============================================
+   BLOCK / UNBLOCK - Superadmin only
+============================================= */
+router.put('/block/:id', adminAuth, adminRole('superadmin'), async (req, res) => {
+  try {
+    const admin = await Admin.findByIdAndUpdate(
+      req.params.id,
+      { isBlocked: true },
+      { new: true, select: '-password' }
+    );
+    if (!admin) return res.status(404).json({ success: false, message: 'Admin not found' });
+    return res.json({ success: true, message: 'Admin blocked', admin });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+router.put('/unblock/:id', adminAuth, adminRole('superadmin'), async (req, res) => {
+  try {
+    const admin = await Admin.findByIdAndUpdate(
+      req.params.id,
+      { isBlocked: false },
+      { new: true, select: '-password' }
+    );
+    if (!admin) return res.status(404).json({ success: false, message: 'Admin not found' });
+    return res.json({ success: true, message: 'Admin unblocked', admin });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+/* =============================================
+   GET CURRENT ADMIN (/me)
+   Authenticated only
+============================================= */
+router.get('/me', adminAuth, (req, res) => {
+  res.json({
+    success: true,
+    admin: {
+      id: req.admin._id,
+      name: req.admin.name,
+      email: req.admin.email,
+      role: req.admin.role,
+      isBlocked: req.admin.isBlocked,
+    },
+  });
+});
+
+/* =============================================
+   LOGOUT - Clear cookie
+============================================= */
+router.post('/logout', (req, res) => {
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+  });
+  res.json({ success: true, message: 'Logged out' });
 });
 
 module.exports = router;
