@@ -40,7 +40,6 @@ router.put('/change-password', protect, UserProfile.changePassword);
  * Body: { email OR mobile }
  */
 router.post('/forgot-password', UserProfile.forgotPassword);
-
 /**
  *  Reset Password (After Forgot Password)
  * PUT /api/user/reset-password
