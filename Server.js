@@ -11,6 +11,7 @@ const UserAuthController = require('./routes/routes')
 const ProfileController = require('./UserMangement/user.routes.js')
 
 //database
+
 const database  = require('./database/db');
 database();
 // origgin 
@@ -20,7 +21,6 @@ app.use(cors({
     methods: ["GET", "POST", "PUT", "PATCH", "OPTION"],
     credentials: true,
 }));
-
 // Middleware // IMPORTANT
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // IMPORTANT
