@@ -124,14 +124,14 @@ router.delete("/delete/:id",protect,authorizeRoles("admin", "superadmin"),async 
           success: false,
           message: "Bulk order not found"
         });
-      }
+      };
       for (const img of bulk.imageUrl) {
         await deleteFromS3(img.key);
       }
       await bulk.deleteOne();
       res.json({success: true,message: "Bulk Order Deleted"});
     } catch (error) {
-      res.status(500).json({ success: false, message: error.message });
+      res.status(500).json({ success: false, message: error.message});
     }
   }
 );
