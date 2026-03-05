@@ -49,18 +49,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-/* =================================================
-   GET BULK ORDER BY ID
-================================================= */
-router.get("/:id", async (req, res) => {
-  try {
-    const data = await BulkOrder.findById(req.params.id);
-    if (!data) {return res.status(404).json({success: false,message: "Bulk order not found"});}
-    res.json({success: true,data});
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
+
 
 
 
@@ -147,30 +136,5 @@ router.delete("/delete/:id",protect,authorizeRoles("admin", "superadmin"),async 
   }
 );
 
-/* ============================================
-   PUBLIC - GET ALL BULK ORDERS
-============================================ */
-
-router.get('/public', async (req, res) => {
-  try {
-    const data = await bulkOrderSchema.find({ isAvailable: true }).sort({ createdAt: -1 });
-    res.status(200).json({success: true,count: data.length,data});
-  } catch (error) {
-    res.status(500).json({success: false,message: error.message});
-  }
-});
-
-/* ============================================
-   PUBLIC - GET BULK ORDER BY ID
-============================================ */
-router.get('/public/:id', async (req, res) => {
-  try {
-    const bulkOrder = await bulkOrderSchema.findById(req.params.id);
-    if (!bulkOrder) {return res.status(404).json({success: false,message: "Bulk order not found"}) }
-    res.status(200).json({success: true,data: bulkOrder});
-  } catch (error) {
-    res.status(500).json({success: false,message: error.message });
-  }
-});
 
 module.exports = router;
