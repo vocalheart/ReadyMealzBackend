@@ -13,9 +13,10 @@ const deleteFromS3 = async (keys = []) => {
   try {
     for (const key of keys) {
       const command = new DeleteObjectCommand({
-        Bucket: process.env.AWS_BULK_ORDER_NAME,
+        Bucket: process.env.AWS_BUCKET_NAME,
         Key: key,
       });
+
       await s3.send(command);
       console.log("Deleted from S3:", key);
     }

@@ -216,6 +216,7 @@ router.put('/:id', adminAuth, adminRole('superadmin'), async (req, res) => {
   }
 });
 
+
 /* =============================================
    DELETE ADMIN - Superadmin only (cannot delete self)
    DELETE /admin/:id

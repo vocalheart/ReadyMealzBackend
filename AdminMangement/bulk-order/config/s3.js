@@ -27,7 +27,7 @@ const upload = multer({
   },
   storage: multerS3({
     s3: s3,
-    bucket: process.env.AWS_BULK_ORDER_NAME, // meal-images-readymealz
+    bucket: process.env.AWS_BUCKET_NAME, // meal-images-readymealz
     contentType: multerS3.AUTO_CONTENT_TYPE,
     key: (req, file, cb) => {
       const uniqueName = `recipes/${Date.now()}-${file.originalname}`;

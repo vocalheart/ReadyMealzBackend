@@ -18,7 +18,7 @@ database();
 app.use(cors({
     origin: ['http://localhost:3000', 'http://localhost:3001', 
         'https://www.readymealz.in', 'https://adminpannelready-mealz.vercel.app', 'https://admin.readymealz.in'],
-    methods: ["GET", "POST", "PUT", "PATCH", "OPTION"],
+    methods: ["GET", "POST", "PUT", "PATCH", 'DELETE' ,"OPTION"],
     credentials: true,
 }));
 // Middleware // IMPORTANT
