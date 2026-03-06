@@ -16,7 +16,6 @@ const deleteFromS3 = async (keys = []) => {
         Bucket: process.env.AWS_BUCKET_NAME,
         Key: key,
       });
-
       await s3.send(command);
       console.log("Deleted from S3:", key);
     }

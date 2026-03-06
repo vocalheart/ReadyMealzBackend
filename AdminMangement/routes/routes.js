@@ -7,7 +7,8 @@ const MealMangement = require('../mealMangemnet/meal.js');
 const Tags = require('../tag//tags');
 const FoodTypes = require('../foodTypes/foodType.js');
 const bulkOrder = require('../bulk-order/bulkorder.js')
-const PublicBulkOrders = require('../bulk-order/publicBulk.js')
+const PublicBulkOrders = require('../bulk-order/publicBulk.js');
+const Bulkorderquoteroutes = require('../bulk-order/Bulkorderquoteroutes')
 router.use('/admin', FoodTypes)
 router.use('/admin' , MealMangement)
 router.use('/admin', AuthController);
@@ -20,6 +21,7 @@ router.use('/admin', Tags);
 
 router.use('/bulk' , bulkOrder)
 router.use('/bulk' , PublicBulkOrders)
+router.use('/bulk-quotes', Bulkorderquoteroutes)
 module.exports = router;
 
 
