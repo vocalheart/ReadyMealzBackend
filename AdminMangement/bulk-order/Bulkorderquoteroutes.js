@@ -1,7 +1,7 @@
 const express = require("express");
 const router  = express.Router();
 
-const BulkOrderQuote = require("../models/bulkOrderQuoteSchema");
+const BulkOrderQuote = require("../models/Bulkorderquoteschema");
 const BulkOrder      = require("../models/bulkorderSchema");
 const protect        = require("../../middleware/FullRoleMiddleware");
 const authorizeRoles = require("../../middleware/roleMiddleware");

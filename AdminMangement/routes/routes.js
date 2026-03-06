@@ -17,11 +17,11 @@ router.use('/category', categoryRoutes);
 router.use('/admin/users' , userMangement);
 router.use('/admin', Tags);
 
-//bulkOrder
+//bulk---Order
+router.use('/bulk' , bulkOrder);
+router.use('/bulk' , PublicBulkOrders);
+router.use('/bulk-quotes', Bulkorderquoteroutes);
 
-router.use('/bulk' , bulkOrder)
-router.use('/bulk' , PublicBulkOrders)
-router.use('/bulk-quotes', Bulkorderquoteroutes)
 module.exports = router;
 
 
