@@ -39,14 +39,12 @@ router.post("/submit", async (req, res) => {
       return res.status(400).json({ success: false, message: "Event date is required" });
     if (!quantity || isNaN(quantity) || Number(quantity) < 1)
       return res.status(400).json({ success: false, message: "Valid quantity is required" });
-
     /* ── Check bulk order exists and is available ── */
     const bulkOrder = await BulkOrder.findById(bulkOrderId);
     if (!bulkOrder)
       return res.status(404).json({ success: false, message: "Bulk order not found" });
     if (bulkOrder.isAvailable === false)
       return res.status(400).json({ success: false, message: "This bulk order is currently unavailable" });
-
     /* ── Validate quantity range ── */
     if (bulkOrder.minQuantity && Number(quantity) < bulkOrder.minQuantity) {
       return res.status(400).json({
@@ -60,7 +58,6 @@ router.post("/submit", async (req, res) => {
         message: `Maximum quantity for this pack is ${bulkOrder.maxQuantity}`,
       });
     }
-
     /* ── Calculate estimated total ── */
     const estimatedTotal = bulkOrder.price * Number(quantity);
 
@@ -97,14 +94,9 @@ router.post("/submit", async (req, res) => {
    GET /bulk-quotes/
    Query: status, page, limit, search
 ══════════════════════════════════════════════ */
-router.get(
-  "/",
-  protect,
-  authorizeRoles("admin", "superadmin"),
-  async (req, res) => {
+router.get("/",protect,authorizeRoles("admin", "superadmin"),async (req, res) => {
     try {
       const { status, page = 1, limit = 15, search } = req.query;
-
       const query = {};
       if (status) query.status = status;
       if (search?.trim()) {
@@ -114,9 +106,7 @@ router.get(
           { phone: { $regex: search.trim(), $options: "i" } },
         ];
       }
-
       const skip = (Number(page) - 1) * Number(limit);
-
       const [quotes, total] = await Promise.all([
         BulkOrderQuote.find(query)
           .populate("bulkOrder", "name price category imageUrl")
@@ -125,15 +115,7 @@ router.get(
           .limit(Number(limit)),
         BulkOrderQuote.countDocuments(query),
       ]);
-
-      res.json({
-        success: true,
-        quotes,
-        page:       Number(page),
-        limit:      Number(limit),
-        total,
-        totalPages: Math.ceil(total / Number(limit)),
-      });
+      res.json({success: true,quotes,page:       Number(page),limit:      Number(limit),total,totalPages: Math.ceil(total / Number(limit))});
     } catch (err) {
       console.error("[BULK-QUOTES GET-ALL]", err);
       res.status(500).json({ success: false, message: err.message });
@@ -166,11 +148,7 @@ router.get(
    ADMIN — Update Quote Status
    PATCH /bulk-quotes/:id/status
 ══════════════════════════════════════════════ */
-router.patch(
-  "/:id/status",
-  protect,
-  authorizeRoles("admin", "superadmin"),
-  async (req, res) => {
+router.patch("/:id/status",protect, authorizeRoles("admin", "superadmin"), async (req, res) => {
     try {
       const { status } = req.body;
       const allowed = ["pending", "contacted", "confirmed", "cancelled"];

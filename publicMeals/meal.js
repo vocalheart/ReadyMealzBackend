@@ -1,7 +1,6 @@
 const express = require("express");
 const Meal = require("../AdminMangement/models/meal.js");
 const Category = require("../AdminMangement/models/category.js");
-
 const router = express.Router();
 
 /**
@@ -362,6 +361,43 @@ router.get("/meals-search", async (req, res) => {
   } catch (err) {
     console.error("[PUBLIC MEALS-SEARCH] Error:", err);
     res.status(500).json({ success: false, message: "Search failed" });
+  }
+});
+
+router.get("/meals/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const meal = await Meal.findOne({
+      _id: id,
+      status: "active",
+      isAvailable: true,
+      isDeleted: false
+    })
+      .populate("category", "name slug")
+      .populate("foodType", "name")
+      .populate("tags", "name")
+      .select("-__v -createdBy -isDeleted");
+
+    if (!meal) {
+      return res.status(404).json({
+        success: false,
+        message: "Meal not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      meal
+    });
+
+  } catch (error) {
+    console.error("GET MEAL BY ID ERROR:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch meal details"
+    });
   }
 });
 

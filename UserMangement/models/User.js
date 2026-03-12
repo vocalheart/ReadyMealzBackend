@@ -31,7 +31,6 @@ const userSchema = new mongoose.Schema(
       minlength: 6,
       select: false,
     },
-
     role: {
       type: String,
       enum: ['user', 'admin', 'superadmin'],
@@ -43,26 +42,22 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-
     //  Block by admin
     isBlocked: {
       type: Boolean,
       default: false,
     },
-
     // Account status (more scalable)
     status: {
       type: String,
       enum: ['pending', 'approved', 'rejected'],
       default: 'approved',
     },
-
-    // 🖼Profile Image
+    // Profile Image
     profileImage: {
       type: String,
       default: '',
     },
-
     //  Security
     loginAttempts: {
       type: Number,

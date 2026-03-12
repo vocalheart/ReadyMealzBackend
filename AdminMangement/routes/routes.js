@@ -8,7 +8,10 @@ const Tags = require('../tag//tags');
 const FoodTypes = require('../foodTypes/foodType.js');
 const bulkOrder = require('../bulk-order/bulkorder.js')
 const PublicBulkOrders = require('../bulk-order/publicBulk.js');
-const Bulkorderquoteroutes = require('../bulk-order/Bulkorderquoteroutes')
+const Bulkorderquoteroutes = require('../bulk-order/Bulkorderquoteroutes');
+const CreateTiffin = require('../tiffin-create/tiffin.js')
+const publicTiffin = require('../tiffin-create/public.tiffin.routes');
+
 router.use('/admin', FoodTypes)
 router.use('/admin' , MealMangement)
 router.use('/admin', AuthController);
@@ -17,11 +20,16 @@ router.use('/category', categoryRoutes);
 router.use('/admin/users' , userMangement);
 router.use('/admin', Tags);
 
+//tiffin
+router.use('/admin/tiffin', CreateTiffin)
+router.use('/public',  publicTiffin)
 //bulk---Order
 router.use('/bulk' , bulkOrder);
 router.use('/bulk' , PublicBulkOrders);
 router.use('/bulk-quotes', Bulkorderquoteroutes);
 
+
+//
 module.exports = router;
 
 

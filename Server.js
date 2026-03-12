@@ -9,7 +9,9 @@ const cors = require('cors');
 const AdminAuthController = require('./AdminMangement/routes/routes');
 const UserAuthController = require('./routes/routes')
 const ProfileController = require('./UserMangement/user.routes.js')
+//
 
+const  Subscription = require('./UserMangement/subscription/subscription.routes.js');
 //database
 
 const database  = require('./database/db');
@@ -29,7 +31,7 @@ app.use(cookieParser()); // must for cookies
 app.use('/api', AdminAuthController);
 app.use('/api/user', UserAuthController);
 app.use('/api/user',  ProfileController);
-  
+app.use('/api/subscriptions' , Subscription);
 
 app.get('/api' , ( req , res)=>{
     res.status(200).json("Your servers running on prot 5000")

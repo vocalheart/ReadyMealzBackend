@@ -9,7 +9,6 @@ const  protect = require('../middleware/authMiddleware.js'); // Auth Middleware
  * Base: /api/user
  * =========================================
  */
-
 /**
  *  Get Logged In User Profile
  * Fields: name, email, mobile, role, profileImage
@@ -20,7 +19,7 @@ router.get('/me', protect, UserProfile.getMyProfile);
 /**
  *  Update Profile (Name, Email, Mobile Number)
  * PUT /api/user/profile
- */
+**/
 router.put('/profile', protect, UserProfile.updateProfile);
 
 /**
