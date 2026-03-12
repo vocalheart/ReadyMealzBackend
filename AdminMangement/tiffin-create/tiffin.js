@@ -10,13 +10,69 @@ const upload = require("./config/s3");
 const deleteFromS3 = require("./config/s3Delete");
 
 /* ===========================
+   GET ALL TIFFINS
+============================== */
+router.get("/", async (req, res) => {
+  try {
+    const tiffins = await Tiffin.find().sort({ createdAt: -1 });
+    res.json({
+      success: true,
+      data: tiffins,
+      message: "Tiffins fetched successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+/* ===========================
+   GET SINGLE TIFFIN BY ID
+============================== */
+router.get("/:id", async (req, res) => {
+  try {
+    const tiffin = await Tiffin.findById(req.params.id);
+    if (!tiffin) {
+      return res.status(404).json({
+        success: false,
+        message: "Tiffin not found",
+      });
+    }
+    res.json({
+      success: true,
+      data: tiffin,
+      message: "Tiffin fetched successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+/* ===========================
    CREATE TIFFIN
 ============================== */
-router.post("/create-tiffin", protect, authorizeRoles("admin", "superadmin"),upload.single("image"),async (req, res) => {
+router.post(
+  "/create-tiffin",
+  protect,
+  authorizeRoles("admin", "superadmin"),
+  upload.single("image"),
+  async (req, res) => {
     try {
       const { name, description } = req.body;
-      if (!name || !description) {return res.status(400).json({success: false,message: "Name and description required"})}
-      const tiffin = await Tiffin.create({name,description,
+      if (!name || !description) {
+        return res.status(400).json({
+          success: false,
+          message: "Name and description required",
+        });
+      }
+      const tiffin = await Tiffin.create({
+        name,
+        description,
         image: {
           url: req.file.location,
           key: req.file.key,
@@ -40,8 +96,12 @@ router.post("/create-tiffin", protect, authorizeRoles("admin", "superadmin"),upl
 /* ===========================
    UPDATE TIFFIN
 =========================== */
-
-router.put("/update-tiffin/:id",protect,authorizeRoles("admin", "superadmin"),upload.single("image"),async (req, res) => {
+router.put(
+  "/update-tiffin/:id",
+  protect,
+  authorizeRoles("admin", "superadmin"),
+  upload.single("image"),
+  async (req, res) => {
     try {
       const { name, description } = req.body;
       const tiffin = await Tiffin.findById(req.params.id);
@@ -54,7 +114,7 @@ router.put("/update-tiffin/:id",protect,authorizeRoles("admin", "superadmin"),up
       if (req.file) {
         if (tiffin.image?.key) {
           await deleteFromS3(tiffin.image.key);
-        };
+        }
         tiffin.image = {
           url: req.file.location,
           key: req.file.key,
@@ -63,9 +123,16 @@ router.put("/update-tiffin/:id",protect,authorizeRoles("admin", "superadmin"),up
       if (name) tiffin.name = name;
       if (description) tiffin.description = description;
       await tiffin.save();
-      res.json({success: true,message: "Tiffin updated",tiffin});
+      res.json({
+        success: true,
+        message: "Tiffin updated",
+        tiffin,
+      });
     } catch (error) {
-      res.status(500).json({success: false,message: error.message});
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
     }
   }
 );
@@ -73,18 +140,32 @@ router.put("/update-tiffin/:id",protect,authorizeRoles("admin", "superadmin"),up
 /* ===========================
    DELETE TIFFIN
 =========================== */
-
-router.delete("/delete-tiffin/:id",protect,authorizeRoles("admin", "superadmin"),async (req, res) => {
+router.delete(
+  "/delete-tiffin/:id",
+  protect,
+  authorizeRoles("admin", "superadmin"),
+  async (req, res) => {
     try {
       const tiffin = await Tiffin.findById(req.params.id);
       if (!tiffin) {
-        return res.status(404).json({success: false, message: "Tiffin not found"});
+        return res.status(404).json({
+          success: false,
+          message: "Tiffin not found",
+        });
       }
-      if (tiffin.image?.key) {await deleteFromS3(tiffin.image.key)}
+      if (tiffin.image?.key) {
+        await deleteFromS3(tiffin.image.key);
+      }
       await Tiffin.findByIdAndDelete(req.params.id);
-      res.json({success: true,message: "Tiffin deleted successfully"});
+      res.json({
+        success: true,
+        message: "Tiffin deleted successfully",
+      });
     } catch (error) {
-      res.status(500).json({success: false,message: error.message});
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
     }
   }
 );
