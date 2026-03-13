@@ -21,7 +21,7 @@ router.use('/admin/users' , userMangement);
 router.use('/admin', Tags);
 
 //tiffin
-router.use('/admin/tiffin', CreateTiffin)
+router.use('/admin', CreateTiffin)
 router.use('/public',  publicTiffin)
 //bulk---Order
 router.use('/bulk' , bulkOrder);
