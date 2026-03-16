@@ -11,7 +11,8 @@ const PublicBulkOrders = require('../bulk-order/publicBulk.js');
 const Bulkorderquoteroutes = require('../bulk-order/Bulkorderquoteroutes');
 const CreateTiffin = require('../tiffin-create/tiffin.js')
 const publicTiffin = require('../tiffin-create/public.tiffin.routes');
-
+const Cart = require('../Cart/Cart.js');
+const Order = require('../Cart/Orderroutes')
 router.use('/admin', FoodTypes)
 router.use('/admin' , MealMangement)
 router.use('/admin', AuthController);
@@ -28,6 +29,9 @@ router.use('/bulk' , bulkOrder);
 router.use('/bulk' , PublicBulkOrders);
 router.use('/bulk-quotes', Bulkorderquoteroutes);
 
+
+//cart
+router.use('/cart', Cart);
 
 //
 module.exports = router;
