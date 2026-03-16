@@ -9,7 +9,7 @@ const upload = require("./config/s3");
 const deleteFromS3 = require("./config/s3Delete");
 
 /* ===========================
-   GET ALL TIFFINS (ADMIN)
+   GET ALL--TIFFINS (ADMIN)
 =========================== */
 
 router.get("/tiffins",
@@ -32,9 +32,7 @@ router.get("/tiffins",
 
       const skip = (page - 1) * limit;
 
-      const tiffins = await Tiffin.find(filter)
-        .populate("createdBy", "name email")
-        .populate("updatedBy", "name email")
+      const tiffins = await Tiffin.find(filter).populate("createdBy", "name email").populate("updatedBy", "name email")
         .sort({ [sortBy]: -1 })
         .skip(skip)
         .limit(parseInt(limit));
