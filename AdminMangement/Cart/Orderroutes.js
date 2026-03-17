@@ -6,33 +6,35 @@ const authorizeRoles = require('../../middleware/roleMiddleware');
 const Order = require('../models/OrderSchema');
 const Cart = require('../models/CartSchema');
 const Meal = require('../models/meal');
-const User = require('../../UserMangement/models/User'); // Adjust path to your User model
+const User = require('../../UserMangement/models/User');
 
 /* ======================== VALIDATION MIDDLEWARE ======================== */
 
-const validateDeliveryAddress = [body('deliveryAddress.name').trim().notEmpty().withMessage('Recipient name is required').isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
+const validateDeliveryAddress = [
+  body('deliveryAddress.name')
+    .trim()
+    .notEmpty()
+    .withMessage('Recipient name is required')
+    .isLength({ min: 2 })
+    .withMessage('Name must be at least 2 characters'),
   body('deliveryAddress.phone')
     .trim()
     .matches(/^[0-9]{10,12}$/)
     .withMessage('Valid phone number (10-12 digits) is required'),
-
   body('deliveryAddress.address')
     .trim()
     .notEmpty()
     .withMessage('Address is required')
     .isLength({ min: 5 })
     .withMessage('Address must be at least 5 characters'),
-
   body('deliveryAddress.city')
     .trim()
     .notEmpty()
     .withMessage('City is required'),
-
   body('deliveryAddress.pincode')
     .trim()
     .matches(/^[0-9]{6}$/)
     .withMessage('Pincode must be exactly 6 digits'),
-
   body('deliveryAddress.state')
     .trim()
     .optional()
@@ -61,27 +63,46 @@ const handleValidationErrors = (req, res, next) => {
  * CREATE ORDER - User creates order from cart or custom items
  * POST /api/orders/create
  */
-router.post('/create',protect,authorizeRoles('user'),validateDeliveryAddress,validatePaymentMethod,handleValidationErrors,async (req, res) => {
+router.post(
+  '/create',
+  protect,
+  authorizeRoles('user'),
+  validateDeliveryAddress,
+  validatePaymentMethod,
+  handleValidationErrors,
+  async (req, res) => {
     try {
-      const userId = req.user.id;
-      const {items,paymentMethod = 'cod',paymentReference = null,
+      // FIX: Use both _id and id to handle different middleware implementations
+      const userId = req.user._id || req.user.id;
+      console.log('Creating order for user:', userId);
+
+      const {
+        items,
+        paymentMethod = 'cod',
+        paymentReference = null,
         specialRequests = '',
         useCart = true,
         subtotal = 0,
         tax = 0,
         deliveryCharge = 0
       } = req.body;
+
       let orderItems = [];
       let finalSubtotal = subtotal;
+
       // Get items from cart if useCart is true
       if (useCart) {
+        console.log('🛒 Finding cart for user:', userId);
         const cart = await Cart.findOne({ user: userId }).populate('items.meal');
+
         if (!cart || cart.items.length === 0) {
+          console.log('Cart empty or not found');
           return res.status(400).json({
             success: false,
             message: 'Cart is empty. Add items before creating order.'
           });
         }
+
         orderItems = cart.items.map(item => ({
           meal: item.meal._id,
           name: item.meal.name,
@@ -91,6 +112,7 @@ router.post('/create',protect,authorizeRoles('user'),validateDeliveryAddress,val
         }));
 
         finalSubtotal = cart.cartTotal;
+        console.log(' Cart items found:', orderItems.length);
       } else {
         // Validate custom items array
         if (!items || items.length === 0) {
@@ -139,9 +161,11 @@ router.post('/create',protect,authorizeRoles('user'),validateDeliveryAddress,val
       }
 
       // Calculate order total
-      const finalTax = tax || (finalSubtotal * 0.05); // Default 5% tax
+      const finalTax = tax || finalSubtotal * 0.05; // Default 5% tax
       const finalDeliveryCharge = deliveryCharge || 40; // Default delivery charge
       const orderTotal = finalSubtotal + finalTax + finalDeliveryCharge;
+
+      console.log(' Order totals:', { finalSubtotal, finalTax, finalDeliveryCharge, orderTotal });
 
       // Create order
       const order = new Order({
@@ -160,10 +184,12 @@ router.post('/create',protect,authorizeRoles('user'),validateDeliveryAddress,val
       });
 
       await order.save();
+      console.log(' Order saved:', order._id);
 
       // Clear cart after successful order
       if (useCart) {
         await Cart.updateOne({ user: userId }, { items: [], cartTotal: 0, totalItems: 0 });
+        console.log(' Cart cleared for user:', userId);
       }
 
       // Populate order details
@@ -182,7 +208,7 @@ router.post('/create',protect,authorizeRoles('user'),validateDeliveryAddress,val
         }
       });
     } catch (error) {
-      console.error('Create order error:', error);
+      console.error(' Create order error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to create order',
@@ -202,7 +228,10 @@ router.get(
   authorizeRoles('user'),
   async (req, res) => {
     try {
-      const userId = req.user.id;
+      // FIX: Use both _id and id
+      const userId = req.user._id || req.user.id;
+      console.log('Fetching orders for user:', userId);
+
       const { page = 1, limit = 10, status, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
 
       const query = { user: userId };
@@ -225,6 +254,8 @@ router.get(
         Order.countDocuments(query)
       ]);
 
+      console.log('Orders found:', orders.length);
+
       res.status(200).json({
         success: true,
         message: 'Orders retrieved successfully',
@@ -239,7 +270,7 @@ router.get(
         }
       });
     } catch (error) {
-      console.error('Get orders error:', error);
+      console.error(' Get orders error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to retrieve orders',
@@ -253,10 +284,7 @@ router.get(
  * GET SINGLE ORDER DETAILS
  * GET /api/orders/:orderId
  */
-router.get(
-  '/:orderId',
-  protect,
-  authorizeRoles('user', 'admin', 'superadmin'),
+router.get('/:orderId',protect,authorizeRoles('user', 'admin', 'superadmin'),
   async (req, res) => {
     try {
       const order = await Order.findById(req.params.orderId)
@@ -270,8 +298,17 @@ router.get(
         });
       }
 
+      //  FIX: Proper user ID comparison
+      const requestUserId = (req.user._id || req.user.id).toString();
+      const orderUserId = order.user._id.toString();
+
+      console.log('📋 Order details check:');
+      console.log('  Request user:', requestUserId);
+      console.log('  Order user:', orderUserId);
+      console.log('  User role:', req.user.role);
+
       // User can only view their own orders (unless admin)
-      if (req.user.role === 'user' && order.user._id.toString() !== req.user.id) {
+      if (req.user.role === 'user' && orderUserId !== requestUserId) {
         return res.status(403).json({
           success: false,
           message: 'You do not have permission to view this order'
@@ -284,7 +321,7 @@ router.get(
         data: order
       });
     } catch (error) {
-      console.error('Get order error:', error);
+      console.error('❌ Get order error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to retrieve order',
@@ -314,8 +351,11 @@ router.patch(
         });
       }
 
-      // Check if user owns the order
-      if (order.user.toString() !== req.user.id) {
+      //  FIX: Proper user ID comparison
+      const requestUserId = (req.user._id || req.user.id).toString();
+      const orderUserId = order.user.toString();
+
+      if (orderUserId !== requestUserId) {
         return res.status(403).json({
           success: false,
           message: 'You cannot cancel this order'
@@ -362,7 +402,7 @@ router.patch(
         }
       });
     } catch (error) {
-      console.error('Cancel order error:', error);
+      console.error(' Cancel order error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to cancel order',
@@ -446,7 +486,7 @@ router.get(
         }
       });
     } catch (error) {
-      console.error('Get all orders error:', error);
+      console.error(' Get all orders error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to retrieve orders',
@@ -482,13 +522,13 @@ router.patch(
 
       // Validate status transition
       const validTransitions = {
-        'placed': ['confirmed', 'cancelled'],
-        'confirmed': ['preparing', 'cancelled'],
-        'preparing': ['ready', 'cancelled'],
-        'ready': ['out_for_delivery'],
-        'out_for_delivery': ['delivered'],
-        'delivered': [],
-        'cancelled': []
+        placed: ['confirmed', 'cancelled'],
+        confirmed: ['preparing', 'cancelled'],
+        preparing: ['ready', 'cancelled'],
+        ready: ['out_for_delivery'],
+        out_for_delivery: ['delivered'],
+        delivered: [],
+        cancelled: []
       };
 
       if (!validTransitions[order.orderStatus].includes(newStatus)) {
@@ -526,7 +566,7 @@ router.patch(
         }
       });
     } catch (error) {
-      console.error('Update order status error:', error);
+      console.error(' Update order status error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to update order status',
@@ -582,7 +622,7 @@ router.patch(
         }
       });
     } catch (error) {
-      console.error('Update payment status error:', error);
+      console.error(' Update payment status error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to update payment status',
@@ -647,7 +687,7 @@ router.patch(
         }
       });
     } catch (error) {
-      console.error('Process refund error:', error);
+      console.error(' Process refund error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to process refund',
@@ -661,11 +701,7 @@ router.patch(
  * GET ORDER ANALYTICS (Admin)
  * GET /api/orders/admin/analytics/summary
  */
-router.get(
-  '/admin/analytics/summary',
-  protect,
-  authorizeRoles('admin', 'superadmin'),
-  async (req, res) => {
+router.get('/admin/analytics/summary',protect,authorizeRoles('admin', 'superadmin'),async (req, res) => {
     try {
       const { startDate, endDate } = req.query;
 
@@ -730,7 +766,7 @@ router.get(
         }
       });
     } catch (error) {
-      console.error('Analytics error:', error);
+      console.error('❌ Analytics error:', error);
       res.status(500).json({
         success: false,
         message: 'Failed to retrieve analytics',
@@ -797,9 +833,9 @@ router.get(
         `${order.deliveryAddress.address}, ${order.deliveryAddress.city}, ${order.deliveryAddress.pincode}`
       ]);
 
-      const csv = [headers, ...rows].map(row =>
-        row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
-      ).join('\n');
+      const csv = [headers, ...rows]
+        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
 
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename=orders-export.csv');

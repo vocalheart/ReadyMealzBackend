@@ -33,6 +33,8 @@ router.use('/bulk-quotes', Bulkorderquoteroutes);
 //cart
 router.use('/cart', Cart);
 
+//orders
+router.use('/orders', Order)
 //
 module.exports = router;
 

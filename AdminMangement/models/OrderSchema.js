@@ -212,7 +212,7 @@ orderSchema.index({ 'deliveryAddress.pincode': 1 });
 orderSchema.index({ user: 1, createdAt: -1 });
 
 /* ================= PRE-SAVE MIDDLEWARE ================= */
-orderSchema.pre('save', function(next) {
+orderSchema.pre('save', function() {
   // Generate order number if not exists
   if (!this.orderNumber) {
     const timestamp = Date.now();
@@ -232,7 +232,6 @@ orderSchema.pre('save', function(next) {
     }];
   }
 
-  next();
 });
 
 /* ================= INSTANCE METHODS ================= */
