@@ -36,7 +36,7 @@ const BulkOrderQuoteSchema = new mongoose.Schema(
     eventType: {
       type: String,
       required: true,
-      enum: ["Corporate Event","Wedding","Birthday Party","College Fest","Office Lunch","Religious Gathering","Other"],
+      enum: ["Corporate Event", "Wedding", "Birthday Party", "College Fest", "Office Lunch", "Religious Gathering", "Other"],
     },
     eventDate: {
       type: Date,
@@ -52,12 +52,18 @@ const BulkOrderQuoteSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
-
     /* ── Estimated Price (calculated on server) ── */
     estimatedTotal: {
       type: Number,
       default: 0,
     },
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "failed"],
+      default: "pending",
+    },
+    razorpayOrderId: String,
+    razorpayPaymentId: String,
 
     /* ── Status ── */
     status: {

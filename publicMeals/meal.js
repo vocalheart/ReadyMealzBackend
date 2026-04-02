@@ -44,23 +44,19 @@ router.get("/meals", async (req, res) => {
       isAvailable: true,
       isDeleted:   false,
     };
-
     // Text search
     if (search?.trim()) {
       query.$text = { $search: search.trim() };
     }
-
     // Filters
     if (category)   query.category = category;
     if (foodType)   query.foodType = foodType;
     if (isFeatured !== undefined) query.isFeatured = isFeatured === "true";
-
     // Tags filter (comma-separated)
     if (tags) {
       const tagArray = tags.split(",").map((t) => t.trim()).filter(Boolean);
       if (tagArray.length) query.tags = { $in: tagArray };
     }
-
     // Price range
     if (minPrice || maxPrice) {
       query.price = {};
@@ -235,16 +231,10 @@ router.get("/meals/slug/:slug", async (req, res) => {
       status:      "active",
       isAvailable: true,
       isDeleted:   false,
-    })
-      .populate("category", "name slug")
-      .populate("foodType", "name")
-      .populate("tags", "name")
-      .select("-__v -createdBy -isDeleted");
-
+    }).populate("category", "name slug").populate("foodType", "name").populate("tags", "name").select("-__v -createdBy -isDeleted");
     if (!meal) {
       return res.status(404).json({ success: false, message: "Meal not found" });
     }
-
     res.json({ success: true, meal });
   } catch (err) {
     console.error("[PUBLIC GET-MEAL-SLUG] Error:", err);

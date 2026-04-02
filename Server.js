@@ -9,10 +9,11 @@ const cors = require('cors');
 const AdminAuthController = require('./AdminMangement/routes/routes');
 const UserAuthController = require('./routes/routes')
 const ProfileController = require('./UserMangement/user.routes.js')
-//
+//subscription routes
 const  Subscription = require('./UserMangement/subscription/subscription.routes.js');
 //database
 const database  = require('./database/db');
+
 database();
 // origgin--------------
 app.use(cors({
@@ -21,10 +22,12 @@ app.use(cors({
     methods: ["GET", "POST", "PUT", "PATCH", 'DELETE' ,"OPTION"],
     credentials: true,
 }));
+
 // Middleware // IMPORTANT
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // IMPORTANT
 app.use(cookieParser()); // must for cookies
+
 // API Routes
 app.use('/api', AdminAuthController);
 app.use('/api/user', UserAuthController);
@@ -41,9 +44,6 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
-
-
-
 
 
 

@@ -63,19 +63,11 @@ const handleValidationErrors = (req, res, next) => {
  * CREATE ORDER - User creates order from cart or custom items
  * POST /api/orders/create
  */
-router.post(
-  '/create',
-  protect,
-  authorizeRoles('user'),
-  validateDeliveryAddress,
-  validatePaymentMethod,
-  handleValidationErrors,
-  async (req, res) => {
+router.post('/create',protect,authorizeRoles('user'),validateDeliveryAddress,validatePaymentMethod,handleValidationErrors,async (req, res) => {
     try {
       // FIX: Use both _id and id to handle different middleware implementations
       const userId = req.user._id || req.user.id;
       console.log('Creating order for user:', userId);
-
       const {
         items,
         paymentMethod = 'cod',
@@ -86,15 +78,12 @@ router.post(
         tax = 0,
         deliveryCharge = 0
       } = req.body;
-
       let orderItems = [];
       let finalSubtotal = subtotal;
-
       // Get items from cart if useCart is true
       if (useCart) {
         console.log('🛒 Finding cart for user:', userId);
         const cart = await Cart.findOne({ user: userId }).populate('items.meal');
-
         if (!cart || cart.items.length === 0) {
           console.log('Cart empty or not found');
           return res.status(400).json({
@@ -102,7 +91,6 @@ router.post(
             message: 'Cart is empty. Add items before creating order.'
           });
         }
-
         orderItems = cart.items.map(item => ({
           meal: item.meal._id,
           name: item.meal.name,
@@ -110,7 +98,6 @@ router.post(
           quantity: item.quantity,
           totalPrice: item.totalPrice
         }));
-
         finalSubtotal = cart.cartTotal;
         console.log(' Cart items found:', orderItems.length);
       } else {
