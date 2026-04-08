@@ -75,10 +75,7 @@ router.get("/meals", async (req, res) => {
         .populate("category", "name slug")
         .populate("foodType", "name")
         .populate("tags", "name")
-        .select("-__v -createdBy -isDeleted")
-        .sort(sort)
-        .skip(skip)
-        .limit(Number(limit)),
+        .select("-__v -createdBy -isDeleted").sort(sort).skip(skip).limit(Number(limit)),
       Meal.countDocuments(query),
     ]);
 
@@ -109,7 +106,6 @@ router.get("/meals", async (req, res) => {
 router.get("/meals/featured", async (req, res) => {
   try {
     const { limit = 8 } = req.query;
-
     const meals = await Meal.find({
       isFeatured:  true,
       status:      "active",
@@ -259,32 +255,27 @@ router.get("/meals/:id/related", async (req, res) => {
     if (!meal) {
       return res.status(404).json({ success: false, message: "Meal not found" });
     }
-
     const query = {
       _id:         { $ne: meal._id },
       status:      "active",
       isAvailable: true,
       isDeleted:   false,
     };
-
     // Match by category first, fallback to tags
     if (meal.category) query.category = meal.category;
     else if (meal.tags?.length) query.tags = { $in: meal.tags };
-
     const meals = await Meal.find(query)
       .populate("category", "name slug")
       .populate("foodType", "name")
       .select("-__v -createdBy -isDeleted")
       .sort({ averageRating: -1 })
       .limit(Number(limit));
-
     res.json({ success: true, meals, count: meals.length });
   } catch (err) {
     console.error("[PUBLIC RELATED-MEALS] Error:", err);
     res.status(500).json({ success: false, message: "Failed to fetch related meals" });
   }
 });
-
 /**
  * ─────────────────────────────────────────────
  * GET ALL CATEGORIES WITH MEAL COUNT (Public)
@@ -309,10 +300,8 @@ router.get("/meals-categories", async (req, res) => {
         return { ...cat, mealCount: count };
       })
     );
-
     // Only return categories that have at least 1 active meal
     const filtered = withCounts.filter((c) => c.mealCount > 0);
-
     res.json({ success: true, categories: filtered, count: filtered.length });
   } catch (err) {
     console.error("[PUBLIC MEALS-CATEGORIES] Error:", err);

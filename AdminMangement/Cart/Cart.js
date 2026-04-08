@@ -33,8 +33,7 @@ const handleValidationErrors = (req, res, next) => {
 };
 
 // ======================== ADD TO CART ========================
-router.post(
-  '/add',
+router.post('/add',
   protect,
   authorizeRoles('user'),
   validateMealId,
@@ -196,7 +195,7 @@ router.put(
   async (req, res) => {
     try {
       const { mealId, quantity } = req.body;
-      const userId = req.user._id; // ✅ FIX: Use _id not id
+      const userId = req.user._id; //FIX: Use _id not id
 
       // Fetch meal
       const meal = await Meal.findById(mealId);

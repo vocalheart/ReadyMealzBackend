@@ -220,8 +220,8 @@ orderSchema.pre('save', function() {
     this.orderNumber = `ORD-${timestamp}-${random}`;
   }
 
-  // Recalculate total
-  this.orderTotal = this.items.reduce((acc, item) => acc + item.totalPrice, 0);
+this.subtotal = this.items.reduce((acc, item) => acc + item.totalPrice, 0);
+this.orderTotal = this.subtotal + this.tax + this.deliveryCharge - this.discount;
 
   // Initialize status history if new order
   if (this.isNew && (!this.statusHistory || this.statusHistory.length === 0)) {
