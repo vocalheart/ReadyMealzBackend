@@ -302,7 +302,7 @@ mealSchema.index({ createdAt: -1 });
 mealSchema.index({ averageRating: -1 });
 
 /* ================= PRE-SAVE MIDDLEWARE ================= */
-mealSchema.pre('save', function(next) {
+mealSchema.pre('save', function() {
   // Generate slug from name if not provided
   if (!this.slug && this.name) {
     this.slug = this.name
@@ -331,8 +331,6 @@ mealSchema.pre('save', function(next) {
   if (this.dietaryFlags) {
     this.dietaryFlags = this.dietaryFlags.map(item => item.trim());
   }
-
-  next();
 });
 
 /* ================= QUERY HELPERS ================= */
