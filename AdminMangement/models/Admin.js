@@ -20,7 +20,10 @@ const adminSchema = new mongoose.Schema(
       required: [true, 'Password is required'],
       minlength: 6,
     },
-
+    Admin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Admin',
+    },
     role: {
       type: String,
       enum: ['admin', 'superadmin'],

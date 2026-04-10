@@ -1,5 +1,5 @@
 const express = require('express');
-const router =  express.Router();
+const router = express.Router();
 const AuthController = require('../authController/Auth.js');
 const categoryRoutes = require('../category/category.routes.js')
 const userMangement = require('../userManagement/userManagement.js');
@@ -14,27 +14,35 @@ const publicTiffin = require('../tiffin-create/public.tiffin.routes');
 const Cart = require('../Cart/Cart.js');
 const Order = require('../Cart/Orderroutes')
 const CreateOrder = require('../bulk-order/OrderCreate/Order.js');
-
+const Advertisement = require('../advertisement/Advertisement.js')
 
 router.use('/admin', FoodTypes)
-router.use('/admin' , MealMangement)
+router.use('/admin', MealMangement)
 router.use('/admin', AuthController);
+
 // Category Routes (FIXED)
+
 router.use('/category', categoryRoutes);
-router.use('/admin/users' , userMangement);
+router.use('/admin/users', userMangement);
 router.use('/admin', Tags);
 
-//tiffin
-router.use('/admin', CreateTiffin)
-router.use('/public',  publicTiffin)
-//bulk---Order
-router.use('/bulk' , bulkOrder);
-router.use('/bulk' , PublicBulkOrders);
-router.use('/bulk-quotes', Bulkorderquoteroutes);
-router.use('/bulk' , CreateOrder)
+//-------tiffin-------//
 
-//cart
+router.use('/admin', CreateTiffin)
+router.use('/public', publicTiffin)
+
+//-------bulk---Order----//
+
+router.use('/bulk', bulkOrder);
+router.use('/bulk', PublicBulkOrders);
+router.use('/bulk-quotes', Bulkorderquoteroutes);
+router.use('/bulk', CreateOrder)
+
+//-------cart-------
 router.use('/cart', Cart);
+
+//------Advertisement
+router.use('/admin/ads', Advertisement)
 
 //orders
 router.use('/orders', Order)
