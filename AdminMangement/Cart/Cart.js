@@ -1,11 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { validationResult, body } = require('express-validator');
-const protect = require('../../middleware/FullRoleMiddleware');
-const authorizeRoles = require('../../middleware/roleMiddleware');
 const Cart = require('../models/CartSchema');
 const Meal = require('../models/meal');
-
+const AuthMiddleware = require('../../middleware/authMiddleware')
 // Validation middleware
 const validateMealId = body('mealId')
   .notEmpty()
@@ -33,12 +31,7 @@ const handleValidationErrors = (req, res, next) => {
 };
 
 // ======================== ADD TO CART ========================
-router.post('/add',
-  protect,
-  authorizeRoles('user'),
-  validateMealId,
-  validateQuantity,
-  handleValidationErrors,
+router.post('/add',AuthMiddleware,validateMealId,validateQuantity,handleValidationErrors,
   async (req, res) => {
     try {
       const userId = req.user._id; // FIX: Use _id not id
@@ -140,8 +133,7 @@ router.post('/add',
 // ======================== GET CART ========================
 router.get(
   '/',
-  protect,
-  authorizeRoles('user'),
+  AuthMiddleware,
   async (req, res) => {
     try {
       const userId = req.user._id; // ✅ FIX: Use _id not id
@@ -187,8 +179,7 @@ router.get(
 // ======================== UPDATE CART ITEM ========================
 router.put(
   '/update',
-  protect,
-  authorizeRoles('user'),
+  AuthMiddleware,
   validateMealId,
   validateQuantity,
   handleValidationErrors,
@@ -271,8 +262,7 @@ router.put(
 // ======================== REMOVE FROM CART ========================
 router.delete(
   '/remove',
-  protect,
-  authorizeRoles('user'),
+  AuthMiddleware,
   validateMealId,
   handleValidationErrors,
   async (req, res) => {
@@ -343,8 +333,7 @@ router.delete(
 // ======================== CLEAR CART ========================
 router.delete(
   '/clear',
-  protect,
-  authorizeRoles('user'),
+ AuthMiddleware,
   async (req, res) => {
     try {
       const userId = req.user._id; // ✅ FIX: Use _id not id

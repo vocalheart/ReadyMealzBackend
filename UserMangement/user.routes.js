@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const UserProfile = require('./profile/profile.controller.js');
 const  protect = require('../middleware/authMiddleware.js'); // Auth Middleware
-
+const UserAddress = require('../UserMangement/Address/address.js')
 /**
  * =========================================
  * USER PROFILE ROUTES (Protected)
@@ -16,6 +16,8 @@ const  protect = require('../middleware/authMiddleware.js'); // Auth Middleware
  */
 router.get('/me', protect, UserProfile.getMyProfile);
 
+//
+router.use('/address' , UserAddress)
 /**
  *  Update Profile (Name, Email, Mobile Number)
  * PUT /api/user/profile

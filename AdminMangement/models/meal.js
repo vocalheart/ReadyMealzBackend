@@ -67,7 +67,6 @@ const mealSchema = new mongoose.Schema(
       min: [0, 'Discount cannot be less than 0%'],
       max: [100, 'Discount cannot exceed 100%']
     },
-
     discountPrice: {
       type: Number,
       default: 0,
