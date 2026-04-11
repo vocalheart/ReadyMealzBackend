@@ -28,44 +28,6 @@ const orderItemSchema = new mongoose.Schema({
   }
 }, { _id: true });
 
-/* ================= DELIVERY ADDRESS SCHEMA ================= */
-const deliveryAddressSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: [true, 'Recipient name is required'],
-    trim: true
-  },
-  phone: {
-    type: String,
-    required: [true, 'Phone number is required'],
-    match: [/^[0-9]{10,12}$/, 'Invalid phone number'],
-    trim: true
-  },
-  address: {
-    type: String,
-    required: [true, 'Address is required'],
-    trim: true
-  },
-  city: {
-    type: String,
-    required: [true, 'City is required'],
-    trim: true
-  },
-  pincode: {
-    type: String,
-    required: [true, 'Pincode is required'],
-    match: [/^[0-9]{6}$/, 'Invalid pincode format (must be 6 digits)'],
-    trim: true
-  },
-  state: {
-    type: String,
-    trim: true
-  },
-  isDefault: {
-    type: Boolean,
-    default: false
-  }
-}, { _id: false });
 
 /* ================= ORDER SCHEMA ================= */
 const orderSchema = new mongoose.Schema(
@@ -154,8 +116,10 @@ const orderSchema = new mongoose.Schema(
       },
       notes: String
     }],
+     // CHANGE HERE
     deliveryAddress: {
-      type: deliveryAddressSchema,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Address",
       required: [true, 'Delivery address is required']
     },
     estimatedDeliveryTime: {
@@ -163,7 +127,7 @@ const orderSchema = new mongoose.Schema(
     },
     actualDeliveryTime: {
       type: Date
-    },
+    },  
     notes: {
       type: String,
       trim: true,
@@ -208,7 +172,6 @@ orderSchema.index({ orderNumber: 1 }, { unique: true, sparse: true });
 orderSchema.index({ orderStatus: 1 });
 orderSchema.index({ paymentStatus: 1 });
 orderSchema.index({ createdAt: -1 });
-orderSchema.index({ 'deliveryAddress.pincode': 1 });
 orderSchema.index({ user: 1, createdAt: -1 });
 
 /* ================= PRE-SAVE MIDDLEWARE ================= */
@@ -290,4 +253,4 @@ orderSchema.statics.getOrdersByStatus = function(status) {
   return this.find({ orderStatus: status }).sort({ createdAt: -1 });
 };
 
-module.exports = mongoose.model("Order", orderSchema);
+module.exports = mongoose.models.Order || mongoose.model("Order", orderSchema);

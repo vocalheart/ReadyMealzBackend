@@ -12,9 +12,7 @@ router.post('/create', AuthMiddleware, async (req, res) => {
       ...req.body,
       user: req.user.id //token se user id
     });
-
     await address.save();
-
     res.status(201).json({
       success: true,
       message: "Address created successfully",

@@ -9,36 +9,15 @@ const Meal = require('../models/meal');
 const User = require('../../UserMangement/models/User');
 const razorpay = require("./config/Razorpay");
 const crypto = require("crypto");
-/* ======================== VALIDATION MIDDLEWARE ======================== */
+const Address = require('../../UserMangement/models/Address.schema'); //
 
+/* ======================== VALIDATION MIDDLEWARE ======================== */
 const validateDeliveryAddress = [
-  body('deliveryAddress.name')
-    .trim()
+  body('deliveryAddress')
     .notEmpty()
-    .withMessage('Recipient name is required')
-    .isLength({ min: 2 })
-    .withMessage('Name must be at least 2 characters'),
-  body('deliveryAddress.phone')
-    .trim()
-    .matches(/^[0-9]{10,12}$/)
-    .withMessage('Valid phone number (10-12 digits) is required'),
-  body('deliveryAddress.address')
-    .trim()
-    .notEmpty()
-    .withMessage('Address is required')
-    .isLength({ min: 5 })
-    .withMessage('Address must be at least 5 characters'),
-  body('deliveryAddress.city')
-    .trim()
-    .notEmpty()
-    .withMessage('City is required'),
-  body('deliveryAddress.pincode')
-    .trim()
-    .matches(/^[0-9]{6}$/)
-    .withMessage('Pincode must be exactly 6 digits'),
-  body('deliveryAddress.state')
-    .trim()
-    .optional()
+    .withMessage('Delivery address ID is required')
+    .isMongoId()
+    .withMessage('Invalid address ID')
 ];
 
 const validatePaymentMethod = body('paymentMethod')
@@ -69,18 +48,15 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
     // FIX: Use both _id and id to handle different middleware implementations
     const userId = req.user._id || req.user.id;
     console.log('Creating order for user:', userId);
-    const {
-      items,
-      paymentMethod = 'cod',
-      paymentReference = null,
-      specialRequests = '',
-      useCart = true,
-      subtotal = 0,
-      tax = 0,
-      deliveryCharge = 0
-    } = req.body;
+    const {items,paymentMethod = 'cod',paymentReference = null,specialRequests = '', useCart = true,subtotal = 0,tax = 0,deliveryCharge = 0} = req.body;
     let orderItems = [];
     let finalSubtotal = subtotal;
+    const address = await Address.findById(req.body.deliveryAddress);
+    if (!address) {return res.status(404).json({
+          success: false,
+          message: "Address not found"
+        });
+      }
     // Get items from cart if useCart is true
     if (useCart) {
       console.log('Finding cart for user:', userId);
@@ -109,7 +85,7 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
           message: 'Items are required'
         });
       }
-
+  
       // Validate each item and fetch meal details
       for (const item of items) {
         const meal = await Meal.findById(item.meal);
@@ -146,9 +122,7 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
     const finalTax = tax || finalSubtotal * 0.05;
     const finalDeliveryCharge = deliveryCharge || 40;
     const orderTotal = finalSubtotal + finalTax + finalDeliveryCharge;
-
     console.log(' Order totals:', { finalSubtotal, finalTax, finalDeliveryCharge, orderTotal });
-
     // 2. Fir Razorpay order banao
     let razorpayOrder = null;
     if (paymentMethod === "online") {
@@ -157,7 +131,6 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
         currency: "INR",
         receipt: `order_${Date.now()}`
       };
-
       razorpayOrder = await razorpay.orders.create(options);
     }
     // Create order
@@ -170,7 +143,7 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
       orderTotal: orderTotal,
       paymentMethod,
       paymentReference: razorpayOrder ? razorpayOrder.id : paymentReference || null,
-      deliveryAddress: req.body.deliveryAddress,
+      deliveryAddress: address._id,
       specialRequests: specialRequests.trim() || '',
       orderStatus: 'placed',
       paymentStatus: paymentMethod === 'cod' ? 'pending' : 'pending'
@@ -188,7 +161,8 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
     // Populate order details
     await order.populate([
       { path: 'user', select: 'name email phone' },
-      { path: 'items.meal', select: 'name slug price images' }
+      { path: 'items.meal', select: 'name slug price images' },
+      { path: 'deliveryAddress' } // ADD THIS
     ]);
     res.status(201).json({
       success: true,
@@ -261,7 +235,7 @@ router.get('/my-orders', protect, authorizeRoles('user'),
 
       const [orders, total] = await Promise.all([
         Order.find(query)
-          .populate('items.meal', 'name price images')
+          .populate('items.meal', 'name price images').populate('deliveryAddress')
           .sort(sort)
           .skip(skip)
           .limit(Number(limit))
@@ -307,21 +281,15 @@ router.get('/:orderId', protect, authorizeRoles('user', 'admin', 'superadmin'),
         .populate('items.meal', 'name slug price description images');
 
       if (!order) {
-        return res.status(404).json({
-          success: false,
-          message: 'Order not found'
-        });
+        return res.status(404).json({success: false,message: 'Order not found'});
       }
-
       //  FIX: Proper user ID comparison
       const requestUserId = (req.user._id || req.user.id).toString();
       const orderUserId = order.user._id.toString();
-
-      console.log('📋 Order details check:');
+      console.log(' Order details check:');
       console.log('  Request user:', requestUserId);
       console.log('  Order user:', orderUserId);
       console.log('  User role:', req.user.role);
-
       // User can only view their own orders (unless admin)
       if (req.user.role === 'user' && orderUserId !== requestUserId) {
         return res.status(403).json({
@@ -443,13 +411,7 @@ router.get('/admin/all-orders', protect, authorizeRoles('admin', 'superadmin'),
       if (paymentStatus) query.paymentStatus = paymentStatus;
 
       // Search by order number or customer name
-      if (search) {
-        query.$or = [
-          { orderNumber: new RegExp(search, 'i') },
-          { 'deliveryAddress.name': new RegExp(search, 'i') },
-          { 'deliveryAddress.phone': new RegExp(search, 'i') }
-        ];
-      }
+ 
 
       // Date range filter
       if (startDate || endDate) {
@@ -464,7 +426,7 @@ router.get('/admin/all-orders', protect, authorizeRoles('admin', 'superadmin'),
       const [orders, total] = await Promise.all([
         Order.find(query)
           .populate('user', 'name email phone')
-          .populate('items.meal', 'name price')
+          .populate('items.meal', 'name price').populate('deliveryAddress')
           .sort(sort)
           .skip(skip)
           .limit(Number(limit))
@@ -775,7 +737,7 @@ router.get(
 
       const orders = await Order.find(query)
         .populate('user', 'name email phone')
-        .populate('items.meal', 'name price')
+        .populate('items.meal', 'name price').populate('deliveryAddress')
         .lean();
 
       if (orders.length === 0) {
@@ -807,7 +769,7 @@ router.get(
         order.paymentStatus,
         order.items.map(i => `${i.name} x${i.quantity}`).join('; '),
         order.orderTotal,
-        `${order.deliveryAddress.address}, ${order.deliveryAddress.city}, ${order.deliveryAddress.pincode}`
+        `${order.deliveryAddress?.fullAddress}, ${order.deliveryAddress?.city}, ${order.deliveryAddress?.pincode}`
       ]);
 
       const csv = [headers, ...rows]

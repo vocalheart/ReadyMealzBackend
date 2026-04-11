@@ -5,18 +5,8 @@ const Cart = require('../models/CartSchema');
 const Meal = require('../models/meal');
 const AuthMiddleware = require('../../middleware/authMiddleware')
 // Validation middleware
-const validateMealId = body('mealId')
-  .notEmpty()
-  .withMessage('Meal ID is required')
-  .isMongoId()
-  .withMessage('Invalid Meal ID format');
-
-const validateQuantity = body('quantity')
-  .notEmpty()
-  .withMessage('Quantity is required')
-  .isInt({ min: 1 })
-  .withMessage('Quantity must be a positive integer');
-
+const validateMealId = body('mealId').notEmpty().withMessage('Meal ID is required').isMongoId().withMessage('Invalid Meal ID format');
+const validateQuantity = body('quantity').notEmpty().withMessage('Quantity is required').isInt({ min: 1 }).withMessage('Quantity must be a positive integer');
 // Error handler middleware
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
@@ -34,7 +24,7 @@ const handleValidationErrors = (req, res, next) => {
 router.post('/add',AuthMiddleware,validateMealId,validateQuantity,handleValidationErrors,
   async (req, res) => {
     try {
-      const userId = req.user._id; // FIX: Use _id not id
+      const userId = req.user.id; // FIX: Use _id not id
       const { mealId, quantity } = req.body;
       // Fetch meal with error handling
       const meal = await Meal.findById(mealId);
@@ -131,22 +121,13 @@ router.post('/add',AuthMiddleware,validateMealId,validateQuantity,handleValidati
 );
 
 // ======================== GET CART ========================
-router.get(
-  '/',
-  AuthMiddleware,
-  async (req, res) => {
+router.get('/',AuthMiddleware,async (req, res) => {
     try {
-      const userId = req.user._id; // ✅ FIX: Use _id not id
-      
-      const cart = await Cart.findOne({ user: userId })
-        .populate('items.meal', 'name description price images');
-      
+      const userId = req.user.id; //  FIX: Use _id not id
+      const cart = await Cart.findOne({ user: userId }).populate('items.meal', 'name description price images');
       // Always return success, even if cart is empty
       if (!cart || cart.items.length === 0) {
-        return res.status(200).json({
-          success: true,
-          message: 'Cart is empty',
-          data: {
+        return res.status(200).json({ success: true,message: 'Cart is empty',data: {
             items: [],
             cartTotal: 0,
             totalItems: 0
@@ -186,7 +167,7 @@ router.put(
   async (req, res) => {
     try {
       const { mealId, quantity } = req.body;
-      const userId = req.user._id; //FIX: Use _id not id
+      const userId = req.user.id; //FIX: Use _id not id
 
       // Fetch meal
       const meal = await Meal.findById(mealId);
@@ -260,15 +241,10 @@ router.put(
 );
 
 // ======================== REMOVE FROM CART ========================
-router.delete(
-  '/remove',
-  AuthMiddleware,
-  validateMealId,
-  handleValidationErrors,
-  async (req, res) => {
+router.delete('/remove',AuthMiddleware, validateMealId,handleValidationErrors,async (req, res) => {
     try {
       const { mealId } = req.body;
-      const userId = req.user._id; // ✅ FIX: Use _id not id
+      const userId = req.user.id; // FIX: Use _id not id
 
       // Find cart
       const cart = await Cart.findOne({ user: userId });
@@ -331,32 +307,19 @@ router.delete(
 );
 
 // ======================== CLEAR CART ========================
-router.delete(
-  '/clear',
- AuthMiddleware,
-  async (req, res) => {
+router.delete('/clear',AuthMiddleware, async (req, res) => {
     try {
-      const userId = req.user._id; // ✅ FIX: Use _id not id
-      
+      const userId = req.user.id; // FIX: Use _id not id
       const cart = await Cart.findOne({ user: userId });
-      
-      if (!cart) {
-        return res.status(404).json({
-          success: false,
-          message: 'Cart not found'
-        });
+      if (!cart) {return res.status(404).json({success: false,message: 'Cart not found'});
       }
-
       const itemCount = cart.items.length;
       cart.items = [];
       cart.cartTotal = 0;
       cart.totalItems = 0;
-
       await cart.save();
-
-      res.status(200).json({
-        success: true,
-        message: `Cart cleared. Removed ${itemCount} items`,
+      res.status(200).json({success: true,
+      message: `Cart cleared. Removed ${itemCount} items`,
         data: {
           _id: cart._id,
           items: [],
