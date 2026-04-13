@@ -15,13 +15,16 @@ const Cart = require('../Cart/Cart.js');
 const Order = require('../Cart/Orderroutes')
 const CreateOrder = require('../bulk-order/OrderCreate/Order.js');
 const Advertisement = require('../advertisement/Advertisement.js')
+const MealsOrder = require('../mealMangemnet/meals-orders.js');
 
 router.use('/admin', FoodTypes)
 router.use('/admin', MealMangement)
 router.use('/admin', AuthController);
 
-// Category Routes (FIXED)
+//meals-order
+router.use('/admin' , MealsOrder);
 
+// Category Routes (FIXED)
 router.use('/category', categoryRoutes);
 router.use('/admin/users', userMangement);
 router.use('/admin', Tags);
