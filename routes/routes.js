@@ -19,7 +19,7 @@ router.put('/unblock/:id', authController.unblockUser);
 router.put('/activate/:id', authController.activateUser);
 router.put('/deactivate/:id', authController.deactivateUser);
 
-// public
+// public------
 router.use('/' , publicMeals);
 router.use('/', FilterPublic);
 

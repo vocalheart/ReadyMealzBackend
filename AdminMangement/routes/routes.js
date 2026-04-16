@@ -16,10 +16,14 @@ const Order = require('../Cart/Orderroutes')
 const CreateOrder = require('../bulk-order/OrderCreate/Order.js');
 const Advertisement = require('../advertisement/Advertisement.js')
 const MealsOrder = require('../mealMangemnet/meals-orders.js');
+const TiffinSubscription = require('../Tiffin-Subscription/subscription.js');
 
 router.use('/admin', FoodTypes)
 router.use('/admin', MealMangement)
 router.use('/admin', AuthController);
+
+
+router.use('/tiffin', TiffinSubscription);
 
 //meals-order
 router.use('/admin' , MealsOrder);

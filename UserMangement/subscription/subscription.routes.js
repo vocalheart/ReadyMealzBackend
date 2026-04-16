@@ -20,7 +20,6 @@ router.post("/create", protect, authorizeRoles("user"), async (req, res) => {
         message: "Missing required fields: mealId, planId, mealTime, startDate",
       });
     }
-
     // Validate meal exists
     const meal = await Meal.findById(mealId);
     if (!meal) {
@@ -29,7 +28,6 @@ router.post("/create", protect, authorizeRoles("user"), async (req, res) => {
         message: "Meal not found",
       });
     }
-
     // Validate meal is available
     if (!meal.isAvailable) {
       return res.status(400).json({
@@ -37,7 +35,6 @@ router.post("/create", protect, authorizeRoles("user"), async (req, res) => {
         message: "This meal is currently unavailable",
       });
     }
-
     // Plan configurations
     const planConfigs = {
       "3days": { days: 3, pricePerMeal: 99, label: "3 Days Plan" },
@@ -45,7 +42,6 @@ router.post("/create", protect, authorizeRoles("user"), async (req, res) => {
       "15days": { days: 15, pricePerMeal: 79, label: "15 Days Plan" },
       "30days": { days: 30, pricePerMeal: 69, label: "30 Days Plan" },
     };
-
     const plan = planConfigs[planId];
     if (!plan) {
       return res.status(400).json({
@@ -53,7 +49,6 @@ router.post("/create", protect, authorizeRoles("user"), async (req, res) => {
         message: "Invalid plan. Choose from: 3days, 7days, 15days, 30days",
       });
     }
-
     // Validate meal time
     const validMealTimes = ["lunch", "dinner", "both"];
     if (!validMealTimes.includes(mealTime)) {
@@ -62,36 +57,29 @@ router.post("/create", protect, authorizeRoles("user"), async (req, res) => {
         message: "Invalid meal time. Choose from: lunch, dinner, both",
       });
     }
-
     // Validate start date
     const start = new Date(startDate);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     start.setHours(0, 0, 0, 0);
-
     if (start < today) {
       return res.status(400).json({
         success: false,
         message: "Start date must be today or in the future",
       });
     }
-
     // Calculate meals and pricing
     const mealMultiplier = mealTime === "both" ? 2 : 1;
     const totalMeals = plan.days * mealMultiplier;
     const subtotal = plan.pricePerMeal * totalMeals;
-
     // Calculate discount
     const discountAmount = meal.discountPercentage
       ? Math.floor((subtotal * meal.discountPercentage) / 100)
       : 0;
-
     const totalAmount = subtotal - discountAmount;
-
     // Calculate end date
     const end = new Date(start);
     end.setDate(end.getDate() + plan.days);
-
     // Validate payment method
     const validPaymentMethods = ["upi", "card", "cod"];
     if (paymentMethod && !validPaymentMethods.includes(paymentMethod)) {
@@ -100,7 +88,6 @@ router.post("/create", protect, authorizeRoles("user"), async (req, res) => {
         message: "Invalid payment method",
       });
     }
-
     // Create subscription object
     const subscription = new Subscription({
       userId: req.user._id,
