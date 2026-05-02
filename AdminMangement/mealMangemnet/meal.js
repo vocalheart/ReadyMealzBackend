@@ -266,14 +266,7 @@ router.post(
     }
   }
 );
-
-/* ─────────────────────────────────────────
-   UPDATE MEAL  PUT /update-meal/:id
-───────────────────────────────────────── */
-router.put(
-  "/update-meal/:id",
-  protect,
-  authorizeRoles("admin", "superadmin"),
+router.put("/update-meal/:id",protect,authorizeRoles("admin", "superadmin"),
   upload.array("images", 5),
   handleValidationErrors,
   async (req, res) => {
@@ -286,34 +279,34 @@ router.put(
         foodType,
         tags,
         deleteImages,
+
         // discount
         discountPercentage,
         discountPrice,
         discountExpiry,
-        // availability
+
         isAvailable,
         isFeatured,
         status,
         visibility,
-        // stock
+
         stock,
         isUnlimitedStock,
         lowStockThreshold,
-        // prep info
+
         preparationTime,
         servingSize,
         servingsPerItem,
-        // nutrition
+
         calories,
         protein,
         carbs,
         fat,
         fiber,
         sodium,
-        // allergens & dietary
+
         allergens,
         dietaryFlags,
-        // soft delete
         isDeleted,
       } = req.body;
 
@@ -324,67 +317,123 @@ router.put(
 
       const updateData = {};
 
-      /* ── basic fields ── */
+      /* ── BASIC ── */
       if (name?.trim()) {
         updateData.name = name.trim();
+
         if (name.trim() !== meal.name) {
           let slug = generateSlug(name.trim());
-          const slugExists = await Meal.findOne({ slug, _id: { $ne: meal._id } });
-          if (slugExists) slug = `${slug}-${Date.now()}`;
+          const exists = await Meal.findOne({ slug, _id: { $ne: meal._id } });
+          if (exists) slug = `${slug}-${Date.now()}`;
           updateData.slug = slug;
         }
       }
 
-      if (price !== undefined && !isNaN(price)) updateData.price = Number(price);
+      const finalPrice = price !== undefined ? Number(price) : meal.price;
+      if (price !== undefined && !isNaN(price)) updateData.price = finalPrice;
+
       if (description !== undefined) updateData.description = description.trim();
       if (categoryId !== undefined) updateData.category = categoryId || null;
       if (foodType !== undefined) updateData.foodType = foodType || null;
       if (visibility !== undefined) updateData.visibility = visibility;
 
-      /* ── tags ── */
+      /* ── TAGS ── */
       if (tags !== undefined) {
         updateData.tags = Array.isArray(tags) ? tags : tags ? [tags] : [];
       }
 
-      /* ── allergens & dietary flags ── */
+      /* ── ALLERGENS ── */
       if (allergens !== undefined) {
         updateData.allergens = Array.isArray(allergens) ? allergens : allergens ? [allergens] : [];
       }
+
       if (dietaryFlags !== undefined) {
         updateData.dietaryFlags = Array.isArray(dietaryFlags) ? dietaryFlags : dietaryFlags ? [dietaryFlags] : [];
       }
 
-      /* ── discount ── */
-      if (discountPercentage !== undefined) updateData.discountPercentage = Number(discountPercentage);
-      if (discountPrice !== undefined) updateData.discountPrice = Number(discountPrice);
-      if (discountExpiry !== undefined) updateData.discountExpiry = discountExpiry || null;
+      /* =========================
+         DISCOUNT SAFE FIX
+      ========================== */
 
-      if (discountPercentage !== undefined && discountPrice === undefined) {
-        const basePrice = price !== undefined ? Number(price) : meal.price;
-        updateData.discountPrice =
+      const hasDiscountInput =
+        discountPrice !== undefined ||
+        discountPercentage !== undefined;
+
+      if (hasDiscountInput) {
+        let finalDiscountPrice;
+
+        if (discountPrice !== undefined && discountPrice !== "") {
+          finalDiscountPrice = Number(discountPrice);
+        } else if (
+          discountPercentage !== undefined &&
           Number(discountPercentage) > 0
-            ? basePrice - (basePrice * Number(discountPercentage)) / 100
-            : 0;
+        ) {
+          finalDiscountPrice =
+            finalPrice - (finalPrice * Number(discountPercentage)) / 100;
+        }
+
+        if (!finalDiscountPrice || finalDiscountPrice <= 0) {
+          updateData.discountPrice = undefined;
+          updateData.discountPercentage = 0;
+        } else {
+          if (finalDiscountPrice >= finalPrice) {
+            return res.status(400).json({
+              success: false,
+              message: "Discount price must be less than original price",
+            });
+          }
+
+          updateData.discountPrice = finalDiscountPrice;
+          updateData.discountPercentage = discountPercentage
+            ? Number(discountPercentage)
+            : Math.round(
+                ((finalPrice - finalDiscountPrice) / finalPrice) * 100
+              );
+        }
       }
 
-      /* ── availability & status ── */
-      if (isAvailable !== undefined) updateData.isAvailable = isAvailable === "true" || isAvailable === true;
-      if (isFeatured !== undefined) updateData.isFeatured = isFeatured === "true" || isFeatured === true;
+      if (discountExpiry !== undefined) {
+        updateData.discountExpiry = discountExpiry || null;
+      }
+
+      /* ── STATUS ── */
+      if (isAvailable !== undefined)
+        updateData.isAvailable = isAvailable === "true" || isAvailable === true;
+
+      if (isFeatured !== undefined)
+        updateData.isFeatured = isFeatured === "true" || isFeatured === true;
+
       if (status !== undefined) updateData.status = status;
 
-      /* ── stock ── */
+      /* ── STOCK ── */
       if (stock !== undefined) updateData.stock = Number(stock);
+
       if (isUnlimitedStock !== undefined)
-        updateData.isUnlimitedStock = isUnlimitedStock === "true" || isUnlimitedStock === true;
-      if (lowStockThreshold !== undefined) updateData.lowStockThreshold = Number(lowStockThreshold);
+        updateData.isUnlimitedStock =
+          isUnlimitedStock === "true" || isUnlimitedStock === true;
 
-      /* ── prep info ── */
-      if (preparationTime !== undefined) updateData.preparationTime = Number(preparationTime);
-      if (servingSize !== undefined) updateData.servingSize = servingSize.trim();
-      if (servingsPerItem !== undefined) updateData.servingsPerItem = Number(servingsPerItem);
+      if (lowStockThreshold !== undefined)
+        updateData.lowStockThreshold = Number(lowStockThreshold);
 
-      /* ── nutrition ── */
-      if (calories !== undefined || protein !== undefined || carbs !== undefined || fat !== undefined || fiber !== undefined || sodium !== undefined) {
+      /* ── PREP ── */
+      if (preparationTime !== undefined)
+        updateData.preparationTime = Number(preparationTime);
+
+      if (servingSize !== undefined)
+        updateData.servingSize = servingSize.trim();
+
+      if (servingsPerItem !== undefined)
+        updateData.servingsPerItem = Number(servingsPerItem);
+
+      /* ── NUTRITION ── */
+      if (
+        calories !== undefined ||
+        protein !== undefined ||
+        carbs !== undefined ||
+        fat !== undefined ||
+        fiber !== undefined ||
+        sodium !== undefined
+      ) {
         updateData.nutrition = {
           calories: calories !== undefined ? Number(calories) : meal.nutrition.calories,
           protein: protein !== undefined ? Number(protein) : meal.nutrition.protein,
@@ -395,46 +444,71 @@ router.put(
         };
       }
 
-      /* ── soft delete ── */
-      if (isDeleted !== undefined) updateData.isDeleted = isDeleted === "true" || isDeleted === true;
+      /* ── DELETE ── */
+      if (isDeleted !== undefined)
+        updateData.isDeleted = isDeleted === "true" || isDeleted === true;
 
-      /* ── delete images from S3 ── */
+      /* =========================
+         IMAGE FIX (NO CONFLICT)
+      ========================== */
+
+      let updatedImages = meal.images || [];
+
+      // DELETE images
       if (deleteImages) {
         const keys = Array.isArray(deleteImages) ? deleteImages : [deleteImages];
+
         if (keys.length > 0) {
-          await deleteFromS3(keys).catch(e => console.error("S3 delete failed:", e));
-          updateData.$pull = { images: { key: { $in: keys } } };
+          await deleteFromS3(keys).catch(e => console.error(e));
+          updatedImages = updatedImages.filter(img => !keys.includes(img.key));
         }
       }
 
-      /* ── add new images ── */
+      // ADD images
       if (req.files?.length) {
         const newImages = req.files.map((f, index) => ({
           url: f.location,
           key: f.key,
           altText: name || meal.name,
-          isMainImage: index === 0 && (!meal.images || meal.images.length === 0)
+          isMainImage: updatedImages.length === 0 && index === 0,
         }));
-        updateData.$push = { images: { $each: newImages } };
+
+        updatedImages = [...updatedImages, ...newImages];
       }
 
-      const updated = await Meal.findByIdAndUpdate(req.params.id, updateData, {
-        new: true,
-        runValidators: true,
-      }).populate([
+      // APPLY FINAL IMAGES
+      if (deleteImages || req.files?.length) {
+        updateData.images = updatedImages;
+      }
+
+      const updated = await Meal.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        {
+          returnDocument: "after",
+          runValidators: true,
+        }
+      ).populate([
         { path: "category", select: "name" },
         { path: "foodType", select: "name" },
         { path: "tags", select: "name" },
       ]);
 
-      res.json({ success: true, message: "Meal updated successfully", data: updated });
+      res.json({
+        success: true,
+        message: "Meal updated successfully",
+        data: updated,
+      });
+
     } catch (err) {
       console.error("[UPDATE-MEAL] Error:", err);
-      res.status(500).json({ success: false, message: err.message || "Failed to update meal" });
+      res.status(500).json({
+        success: false,
+        message: err.message || "Failed to update meal",
+      });
     }
   }
 );
-
 /* ─────────────────────────────────────────
    DELETE MEAL  DELETE /delete-meal/:id
 ───────────────────────────────────────── */

@@ -3,10 +3,12 @@ const router = express.Router();
 const { validationResult, body } = require('express-validator');
 const Cart = require('../models/CartSchema');
 const Meal = require('../models/meal');
-const AuthMiddleware = require('../../middleware/authMiddleware')
+const AuthMiddleware = require('../../middleware/authMiddleware');
 // Validation middleware
 const validateMealId = body('mealId').notEmpty().withMessage('Meal ID is required').isMongoId().withMessage('Invalid Meal ID format');
 const validateQuantity = body('quantity').notEmpty().withMessage('Quantity is required').isInt({ min: 1 }).withMessage('Quantity must be a positive integer');
+
+
 // Error handler middleware
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);

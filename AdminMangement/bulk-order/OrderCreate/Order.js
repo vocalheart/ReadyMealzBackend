@@ -8,13 +8,8 @@ const BulkOrderQuote = require("../../models/Bulkorderquoteschema");
 const orderId = "order_SYcKteHWQSp6Em";
 const paymentId = "pay_test123";
 
-const signature = crypto
-  .createHmac("sha256", "kfi1coMGeo3UYYZFdE9pd3oh")
-  .update(orderId + "|" + paymentId)
-  .digest("hex");
-
+const signature = crypto.createHmac("sha256", "kfi1coMGeo3UYYZFdE9pd3oh").update(orderId + "|" + paymentId).digest("hex");
 console.log(signature);
-
 // =====================================
 //  CREATE ORDER (SAFE + DB SAVE)
 // =====================================
@@ -44,7 +39,7 @@ router.post("/create-order", async (req, res) => {
     quote.razorpayOrderId = razorpayOrder.id;
     quote.paymentStatus = "pending";
     await quote.save();
-    res.json({success: true,razorpayOrder,quote});
+    res.json({success: true, razorpayOrder,quote});
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -53,10 +48,11 @@ router.post("/create-order", async (req, res) => {
   }
 });
 
-
 // =====================================
 //  VERIFY PAYMENT + UPDATE DB
 // =====================================
+
+
 router.post("/verify-payment", async (req, res) => {
   try {
     const {razorpay_order_id, razorpay_payment_id, razorpay_signature} = req.body;

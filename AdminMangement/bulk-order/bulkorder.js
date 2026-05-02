@@ -49,13 +49,9 @@ router.get("/", async (req, res) => {
   }
 });
 
-
-
-
-
 /* =================================================
-   UPDATE BULK ORDER
-================================================= */
+   UPDATE BULK ORDER  //============================
+==================================================== */
 router.put("/update/:id",protect,authorizeRoles("admin", "superadmin"),async (req, res) => {
     try {
       const bulk = await BulkOrder.findByIdAndUpdate(req.params.id,req.body,{ new: true });
