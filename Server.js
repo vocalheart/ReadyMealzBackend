@@ -1,31 +1,31 @@
 
 
 
-
-
-
-
 const dotenv = require('dotenv');
 dotenv.config();
 const express = require('express');
 const app = express();
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
+
 // Routes
 const AdminAuthController = require('./AdminMangement/routes/routes');
 const UserAuthController = require('./routes/routes')
-const ProfileController = require('./UserMangement/user.routes.js')
-//subscription routes
-const  Subscription = require('./UserMangement/subscription/subscription.routes.js');
-//database
-const database  = require('./database/db');
+const ProfileController = require('./UserMangement/user.routes.js');
 
+//-----------subscription routes
+const  Subscription =   require('./UserMangement/subscription/subscription.routes.js');
+const  PartnerApp   =   require('./deleverySystem/routes.js');
+
+// database
+const database = require('./database/db');
 database();
-// origgin--------------
+
+// origin--------------
 app.use(cors({
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://www.a1meals.com'  ,'https://www.readymealz.in',
              'https://adminpannelready-mealz.vercel.app', 'https://admin.readymealz.in'],
-    methods: ["GET", "POST", "PUT", "PATCH", 'DELETE' ,"OPTION"],
+    methods:["GET", "POST", "PUT", "PATCH", 'DELETE' ,"OPTION"],
     credentials: true,
 }));
 
@@ -39,22 +39,20 @@ app.use('/api', AdminAuthController);
 app.use('/api/user', UserAuthController);
 app.use('/api/user',  ProfileController);
 app.use('/api/subscriptions' , Subscription);
+app.use('/api/partner' , PartnerApp);
 
 app.get('/api' , ( req , res)=>{
     res.status(200).json("Your servers running on prot 5000")
 });
 
-// Server
+// Server  -----------------------------------------------------------------
+
 const PORT = process.env.PORT || 5000;
+
 //
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
-
-
-
-
-
 
 
 

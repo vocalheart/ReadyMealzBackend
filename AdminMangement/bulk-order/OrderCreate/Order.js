@@ -19,10 +19,7 @@ router.post("/create-order", async (req, res) => {
     // quote fetch karo
     const quote = await BulkOrderQuote.findById(quoteId).populate("bulkOrder");
     if (!quote) {
-      return res.status(404).json({
-        success: false,
-        message: "Quote not found",
-      });
+      return res.status(404).json({success: false,message: "Quote not found"});
     }
     // price calculate (secure way)
     const productPrice = quote.bulkOrder.price;
@@ -51,24 +48,16 @@ router.post("/create-order", async (req, res) => {
 // =====================================
 //  VERIFY PAYMENT + UPDATE DB
 // =====================================
-
-
 router.post("/verify-payment", async (req, res) => {
   try {
     const {razorpay_order_id, razorpay_payment_id, razorpay_signature} = req.body;
-
     const body = razorpay_order_id + "|" + razorpay_payment_id;
-
     const expectedSignature = crypto.createHmac("sha256", "kfi1coMGeo3UYYZFdE9pd3oh").update(body).digest("hex");
     if (expectedSignature === razorpay_signature) {
       // DB update
       const quote = await BulkOrderQuote.findOneAndUpdate(
         { razorpayOrderId: razorpay_order_id },
-        {
-          razorpayPaymentId: razorpay_payment_id,
-          paymentStatus: "paid",
-          status: "confirmed", // optional
-        },
+        {razorpayPaymentId: razorpay_payment_id,paymentStatus: "paid",status: "confirmed",},
         { new: true }
       );
       return res.json({
@@ -77,10 +66,7 @@ router.post("/verify-payment", async (req, res) => {
         quote,
       });
     } else {
-      await BulkOrderQuote.findOneAndUpdate(
-        { razorpayOrderId: razorpay_order_id },
-        { paymentStatus: "failed" }
-      );
+      await BulkOrderQuote.findOneAndUpdate({ razorpayOrderId: razorpay_order_id },{ paymentStatus: "failed" });
       return res.status(400).json({
         success: false,
         message: "Invalid signature",
