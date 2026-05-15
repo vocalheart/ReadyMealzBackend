@@ -48,15 +48,16 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
     // FIX: Use both _id and id to handle different middleware implementations
     const userId = req.user._id || req.user.id;
     console.log('Creating order for user:', userId);
-    const {items,paymentMethod = 'cod',paymentReference = null,specialRequests = '', useCart = true,subtotal = 0,tax = 0,deliveryCharge = 0} = req.body;
+    const { items, paymentMethod = 'cod', paymentReference = null, specialRequests = '', useCart = true, subtotal = 0, tax = 0, deliveryCharge = 0 } = req.body;
     let orderItems = [];
     let finalSubtotal = subtotal;
     const address = await Address.findById(req.body.deliveryAddress);
-    if (!address) {return res.status(404).json({
-          success: false,
-          message: "Address not found"
-        });
-      }
+    if (!address) {
+      return res.status(404).json({
+        success: false,
+        message: "Address not found"
+      });
+    }
     // Get items from cart if useCart is true
     if (useCart) {
       console.log('Finding cart for user:', userId);
@@ -68,7 +69,16 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
           message: 'Cart is empty. Add items before creating order.'
         });
       }
-      orderItems = cart.items.map(item => ({
+      const validCartItems = cart.items.filter(item => item.meal);
+
+      if (validCartItems.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "All cart meals are invalid or deleted"
+        });
+      }
+
+      orderItems = validCartItems.map(item => ({
         meal: item.meal._id,
         name: item.meal.name,
         price: item.price,
@@ -85,7 +95,7 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
           message: 'Items are required'
         });
       }
-  
+
       // Validate each item and fetch meal details
       for (const item of items) {
         const meal = await Meal.findById(item.meal);
@@ -281,7 +291,7 @@ router.get('/:orderId', protect, authorizeRoles('user', 'admin', 'superadmin'),
         .populate('items.meal', 'name slug price description images');
 
       if (!order) {
-        return res.status(404).json({success: false,message: 'Order not found'});
+        return res.status(404).json({ success: false, message: 'Order not found' });
       }
       //  FIX: Proper user ID comparison
       const requestUserId = (req.user._id || req.user.id).toString();
@@ -411,7 +421,7 @@ router.get('/admin/all-orders', protect, authorizeRoles('admin', 'superadmin'),
       if (paymentStatus) query.paymentStatus = paymentStatus;
 
       // Search by order number or customer name
- 
+
 
       // Date range filter
       if (startDate || endDate) {

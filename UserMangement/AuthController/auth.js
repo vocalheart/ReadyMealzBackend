@@ -191,6 +191,8 @@ exports.blockUser = async (req, res) => {
       message: 'User blocked successfully',
       user,
     });
+
+    
   } catch (error) {
     console.error('Block Error:', error);
     res.status(500).json({
@@ -242,12 +244,7 @@ exports.deactivateUser = async (req, res) => {
 ========================================= */
 exports.activateUser = async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { isActive: true },
-      { new: true }
-    );
-
+    const user = await User.findByIdAndUpdate(req.params.id,{ isActive: true },{ new: true });
     res.status(200).json({
       success: true,
       message: 'User activated successfully',
