@@ -11,6 +11,7 @@ const s3 = new S3Client({
   },
 });
 
+// FILE FILTER
 const fileFilter = (req, file, cb) => {
   if (file.mimetype.startsWith("image/")) {
     cb(null, true);
@@ -19,29 +20,43 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+// MULTER UPLOAD
 const upload = multer({
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
   storage: multerS3({
     s3,
     bucket: process.env.AWS_BUCKET_NAME,
     contentType: multerS3.AUTO_CONTENT_TYPE,
+
     key: (req, file, cb) => {
-      cb(null, `advertisement/${Date.now()}-${file.originalname}`);
+      cb(
+        null,
+        `advertisement/${Date.now()}-${file.originalname}`
+      );
     },
   }),
 });
 
-const deleteFromS3 = async (key) => {
-  try {
-    const command = new DeleteObjectCommand({
-      Bucket: process.env.AWS_BUCKET_NAME,
-      Key: key,
-    });
-    await s3.send(command);
-  } catch (err) {
-    console.error(err);
-  }
-};
+// DELETE FUNCTION
+async function deleteFromS3(key) {
 
-module.exports = { upload, deleteFromS3 };
+  const command = new DeleteObjectCommand({
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: key,
+  });
+
+  return await s3.send(command);
+}
+
+console.log({
+  upload,
+  deleteFromS3
+});
+
+module.exports = {
+  upload,
+  deleteFromS3,
+};

@@ -70,14 +70,12 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
         });
       }
       const validCartItems = cart.items.filter(item => item.meal);
-
       if (validCartItems.length === 0) {
         return res.status(400).json({
           success: false,
           message: "All cart meals are invalid or deleted"
         });
-      }
-
+      };
       orderItems = validCartItems.map(item => ({
         meal: item.meal._id,
         name: item.meal.name,
@@ -107,7 +105,7 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
             success: false,
             message: `${meal.name} is currently unavailable`
           });
-        }
+        };
         // Validate stock
         if (!meal.isUnlimitedStock && item.quantity > meal.stock) {
           return res.status(400).json({
@@ -125,8 +123,7 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
         });
         finalSubtotal += (item.price || meal.price) * item.quantity;
       }
-    }
-
+    };
     // Calculate order total
     // 1. Pehle total calculate karo
     const finalTax = tax || finalSubtotal * 0.05;
@@ -160,24 +157,20 @@ router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress,
     });
     await order.save();
     console.log(' Order saved:', order._id);
-
     // Cart clear ONLY for COD
     if (useCart && paymentMethod === "cod") {
       await Cart.updateOne(
         { user: userId },
         { items: [], cartTotal: 0, totalItems: 0 }
       );
-    }
+    };
     // Populate order details
     await order.populate([
       { path: 'user', select: 'name email phone' },
       { path: 'items.meal', select: 'name slug price images' },
       { path: 'deliveryAddress' } // ADD THIS
     ]);
-    res.status(201).json({
-      success: true,
-      message: 'Order created successfully',
-      data: {
+    res.status(201).json({success: true,message: 'Order created successfully', data: {
         order,
         razorpayOrder, //IMPORTANT
         orderNumber: order.orderNumber,
@@ -220,6 +213,9 @@ router.post("/verify-payment", async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+
+
 /**
  * GET USER'S ORDERS
  * GET /api/orders/my-orders
@@ -230,11 +226,8 @@ router.get('/my-orders', protect, authorizeRoles('user'),
       // FIX: Use both _id and id
       const userId = req.user._id || req.user.id;
       console.log('Fetching orders for user:', userId);
-
       const { page = 1, limit = 10, status, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
-
       const query = { user: userId };
-
       // Filter by status if provided
       if (status) {
         query.orderStatus = status;
@@ -715,12 +708,8 @@ router.get('/admin/analytics/summary', protect, authorizeRoles('admin', 'superad
       }
     });
   } catch (error) {
-    console.error('❌ Analytics error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to retrieve analytics',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+    console.error(' Analytics error:', error);
+    res.status(500).json({success: false,message: 'Failed to retrieve analytics',error: process.env.NODE_ENV === 'development' ? error.message : undefined});
   }
 }
 );

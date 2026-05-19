@@ -2,9 +2,32 @@ const express = require('express');
 const router = express.Router();
 
 const Advertisement = require('../models/Advertisement');
-const { upload, deleteFromS3 } = require('../config/s3');
 const adminAuth = require('../../middleware/adminMiddleware');
+const s3Config = require('../config/s3');
 
+console.log("S3 CONFIG:", s3Config);
+
+const upload = s3Config.upload;
+
+const { S3Client, DeleteObjectCommand } = require("@aws-sdk/client-s3");
+
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY,
+    secretAccessKey: process.env.AWS_SECRET_KEY,
+  },
+});
+
+const deleteFromS3 = async (key) => {
+
+  const command = new DeleteObjectCommand({
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: key,
+  });
+
+  return await s3.send(command);
+};
 
 // ================= PUBLIC GET (ACTIVE ADS) =================
 //  Always keep this ABOVE /:id
@@ -111,54 +134,132 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-
 // ================= UPDATE =================
-router.put('/:id', adminAuth, upload.single('image'), async (req, res) => {
-  try {
-    const ad = await Advertisement.findById(req.params.id);
-    if (!ad) {
-      return res.status(404).json({success: false,message: "Ad not found"});
+router.put(
+  '/:id',
+  adminAuth,
+  upload.single('image'),
+  async (req, res) => {
+    try {
+
+      const ad = await Advertisement.findById(req.params.id);
+
+      if (!ad) {
+        return res.status(404).json({
+          success: false,
+          message: "Ad not found"
+        });
+      }
+
+      // Ownership check
+      if (ad.Admin.toString() !== req.admin._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "Not allowed"
+        });
+      }
+
+      // IMAGE UPDATE
+      if (req.file) {
+
+        // DELETE OLD IMAGE FROM S3
+        if (ad.image) {
+
+          const url = new URL(ad.image);
+
+          const oldKey = decodeURIComponent(
+            url.pathname.substring(1)
+          );
+
+          console.log("OLD IMAGE KEY:", oldKey);
+
+          await deleteFromS3(oldKey);
+        }
+
+        // NEW IMAGE URL
+        const imageUrl =
+          req.file.location ||
+          `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${req.file.key}`;
+
+        ad.image = imageUrl;
+      }
+
+      // UPDATE OTHER FIELDS
+      Object.assign(ad, req.body);
+
+      await ad.save();
+
+      res.json({
+        success: true,
+        message: "Advertisement updated successfully",
+        data: ad
+      });
+
+    } catch (error) {
+
+      console.log(error);
+
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
     }
-    // Ownership check
-    if (ad.Admin.toString() !== req.admin._id.toString()) {
-      return res.status(403).json({success: false,message: "Not allowed"});
-    }
-    // Image update
-    if (req.file) {
-      if (ad.image) {
-        const oldKey = ad.image.split(".com/")[1];
-        await deleteFromS3(oldKey);
-      };
-      ad.image = req.file.location;
-    }
-    // Update other fields
-    Object.assign(ad, req.body);
-    await ad.save();
-    res.json({success: true,data: ad});
-  } catch (error) {res.status(500).json({success: false,error: error.message });
   }
-});
+);
+
 
 
 // ================= DELETE =================
 router.delete('/:id', adminAuth, async (req, res) => {
   try {
+
     const ad = await Advertisement.findById(req.params.id);
+
     if (!ad) {
-      return res.status(404).json({success: false,message: "Ad not found"});
+      return res.status(404).json({
+        success: false,
+        message: "Ad not found"
+      });
     }
+
     // Ownership check
     if (ad.Admin.toString() !== req.admin._id.toString()) {
-      return res.status(403).json({success: false,message: "Not allowed"});
+      return res.status(403).json({
+        success: false,
+        message: "Not allowed"
+      });
     }
-    // Delete image
+
+    // DELETE IMAGE FROM S3
     if (ad.image) {
-      const key = ad.image.split(".com/")[1];
+
+      const url = new URL(ad.image);
+
+      const key = decodeURIComponent(
+        url.pathname.substring(1)
+      );
+
+      console.log("DELETE IMAGE KEY:", key);
+
       await deleteFromS3(key);
     }
+
+    // DELETE DOCUMENT
     await ad.deleteOne();
-    res.json({success: true,message: "Deleted successfully"});
-  } catch (error) {res.status(500).json({success: false,error: error.message});
+
+    res.json({
+      success: true,
+      message: "Advertisement deleted successfully"
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 module.exports = router;
