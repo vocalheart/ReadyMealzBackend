@@ -6,7 +6,7 @@ const router = express.Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const DeveleryController = require("../models/Auth.Schema");
-
+const verifyUser = require('../middleware/PartnerMiddleware');
 
 // ================= REGISTER API =================
 router.post("/register",  async (req, res) => {
@@ -47,8 +47,8 @@ router.post("/login", async (req, res) => {
     // ================= SEND TOKEN IN COOKIE =================
     res.cookie("token", token, {
       httpOnly: true,                                         // Prevents JavaScript access (XSS protection)
-      secure: process.env.NODE_ENV === "production", // Use true in production (HTTPS)
-      sameSite: "strict",  // CSRF protection
+      secure: true, // Use true in production (HTTPS)
+      sameSite: "none",  // CSRF protection
       maxAge: 7 * 24 * 60 * 60 * 1000,  // 7 days in milliseconds
       path: "/"       // Available for whole site
     });
@@ -62,6 +62,25 @@ router.post("/login", async (req, res) => {
       success: false,
       message: "Something went wrong",
       error: error.message
+    });
+  }
+});
+
+// ================= VERIFY AUTH API =================
+router.get("/me", verifyUser, async (req, res) => {
+  try {
+    return res.status(200).json({
+      success: true,
+      message: "User verified successfully",
+      user: req.user,
+    });
+  } catch (error) {
+    console.log(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
     });
   }
 });

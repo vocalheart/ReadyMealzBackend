@@ -6,8 +6,7 @@ const Meal = require('../models/meal');
 const AuthMiddleware = require('../../middleware/authMiddleware');
 // Validation middleware
 const validateMealId = body('mealId').notEmpty().withMessage('Meal ID is required').isMongoId().withMessage('Invalid Meal ID format');
-const validateQuantity = body('quantity').notEmpty().withMessage('Quantity is required').isInt({ min: 1 }).withMessage('Quantity must be a positive integer');
-
+const validateQuantity = body('quantity').notEmpty().withMessage('Quantity is required').isInt({ min: -100, max: 100 }).withMessage('Quantity must be a valid integer');
 
 // Error handler middleware
 const handleValidationErrors = (req, res, next) => {
@@ -21,65 +20,104 @@ const handleValidationErrors = (req, res, next) => {
   }
   next();
 };
-
 // ======================== ADD TO CART ========================
-router.post('/add',AuthMiddleware,validateMealId,validateQuantity,handleValidationErrors,
+router.post(
+  "/add",
+  AuthMiddleware,
+  validateMealId,
+  validateQuantity,
+  handleValidationErrors,
   async (req, res) => {
     try {
-      const userId = req.user.id; // FIX: Use _id not id
+      const userId = req.user.id;
       const { mealId, quantity } = req.body;
-      // Fetch meal with error handling
+
+      // ================= FETCH MEAL =================
       const meal = await Meal.findById(mealId);
+
       if (!meal) {
         return res.status(404).json({
           success: false,
-          message: 'Meal not found'
-        });
-      }
-      // Check if meal is available
-      if (!meal.isAvailable || meal.status === 'inactive') {
-        return res.status(400).json({
-          success: false,
-          message: 'This meal is currently unavailable'
+          message: "Meal not found"
         });
       }
 
-      // Check stock if limited
-      if (!meal.isUnlimitedStock && quantity > meal.stock) {
+      // ================= CHECK AVAILABILITY =================
+      if (!meal.isAvailable || meal.status === "inactive") {
         return res.status(400).json({
           success: false,
-          message: `Only ${meal.stock} items available in stock`,
-          availableStock: meal.stock
+          message: "This meal is currently unavailable"
         });
       }
 
-      // Find or create cart
+      // ================= FIND OR CREATE CART =================
       let cart = await Cart.findOne({ user: userId });
+
       if (!cart) {
-        cart = new Cart({ user: userId, items: [] });
+        cart = new Cart({
+          user: userId,
+          items: []
+        });
       }
 
-      // Check if meal already in cart
+      // ================= CHECK EXISTING ITEM =================
       const existingItem = cart.items.find(
         item => item.meal.toString() === mealId
       );
 
+      // =======================================================
+      // IF ITEM ALREADY EXISTS
+      // =======================================================
       if (existingItem) {
+
         const newQuantity = existingItem.quantity + quantity;
-        
-        // Validate stock for updated quantity
-        if (!meal.isUnlimitedStock && newQuantity > meal.stock) {
+
+        // ================= REMOVE ITEM IF QUANTITY <= 0 =================
+        if (newQuantity <= 0) {
+          cart.items = cart.items.filter(
+            item => item.meal.toString() !== mealId
+          );
+        } else {
+
+          // ================= STOCK VALIDATION =================
+          if (!meal.isUnlimitedStock && newQuantity > meal.stock) {
+            return res.status(400).json({
+              success: false,
+              message: `Only ${meal.stock} items available in stock`,
+              currentInCart: existingItem.quantity,
+              availableStock: meal.stock
+            });
+          }
+
+          // ================= UPDATE QUANTITY =================
+          existingItem.quantity = newQuantity;
+          existingItem.price = meal.price;
+          existingItem.totalPrice = newQuantity * meal.price;
+        }
+
+      } else {
+
+        // =======================================================
+        // NEW ITEM ADD
+        // =======================================================
+
+        if (quantity <= 0) {
           return res.status(400).json({
             success: false,
-            message: `Cannot add this quantity. Available stock: ${meal.stock}`,
-            currentInCart: existingItem.quantity,
+            message: "Quantity must be greater than 0"
+          });
+        }
+
+        // ================= STOCK CHECK =================
+        if (!meal.isUnlimitedStock && quantity > meal.stock) {
+          return res.status(400).json({
+            success: false,
+            message: `Only ${meal.stock} items available in stock`,
             availableStock: meal.stock
           });
         }
 
-        existingItem.quantity = newQuantity;
-        existingItem.totalPrice = newQuantity * meal.price;
-      } else {
+        // ================= PUSH NEW ITEM =================
         cart.items.push({
           meal: mealId,
           quantity: quantity,
@@ -88,35 +126,44 @@ router.post('/add',AuthMiddleware,validateMealId,validateQuantity,handleValidati
         });
       }
 
-      // Recalculate totals
-      cart.cartTotal = cart.items.reduce((acc, item) => acc + item.totalPrice, 0);
-      cart.totalItems = cart.items.reduce((acc, item) => acc + item.quantity, 0);
+      // ================= RECALCULATE CART =================
+      cart.cartTotal = cart.items.reduce(
+        (acc, item) => acc + item.totalPrice,
+        0
+      );
 
+      cart.totalItems = cart.items.reduce(
+        (acc, item) => acc + item.quantity,
+        0
+      );
+
+      // ================= SAVE CART =================
       await cart.save();
 
-      // Populate meal data in response
-      await cart.populate('items.meal', 'name description price images');
+      // ================= POPULATE MEAL DATA =================
+      await cart.populate(
+        "items.meal",
+        "name description price images"
+      );
 
-      res.status(201).json({
+      // ================= RESPONSE =================
+      res.status(200).json({
         success: true,
-        message: 'Meal added to cart successfully',
-        data: {
-          cart,
-          addedItem: {
-            meal: meal.name,
-            quantity: existingItem ? quantity : quantity,
-            totalPrice: existingItem 
-              ? existingItem.totalPrice 
-              : meal.price * quantity
-          }
-        }
+        message: "Cart updated successfully",
+        data: cart
       });
+
     } catch (error) {
-      console.error('Cart add error:', error);
+
+      console.error("Cart add error:", error);
+
       res.status(500).json({
         success: false,
-        message: 'Failed to add item to cart',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: "Failed to update cart",
+        error:
+          process.env.NODE_ENV === "development"
+            ? error.message
+            : undefined
       });
     }
   }
