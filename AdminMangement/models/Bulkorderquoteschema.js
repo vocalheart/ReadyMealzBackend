@@ -8,7 +8,6 @@ const BulkOrderQuoteSchema = new mongoose.Schema(
       ref: "BulkOrder",
       required: true,
     },
-
     /* ── Customer Info ── */
     name: {
       type: String,
@@ -75,4 +74,6 @@ const BulkOrderQuoteSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("BulkOrderQuote", BulkOrderQuoteSchema);
+module.exports =
+  mongoose.models.BulkOrderQuote ||
+  mongoose.model("BulkOrderQuote", BulkOrderQuoteSchema);

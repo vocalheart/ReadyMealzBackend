@@ -16,7 +16,6 @@ const userSchema = new mongoose.Schema(
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please use a valid email address'],
     },
-
     //  Mobile login support (since your frontend uses identifier)
     mobile: {
       type: String,
@@ -24,7 +23,6 @@ const userSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
     },
-
     password: {
       type: String,
       required: [true, 'Password is required'],
@@ -75,7 +73,13 @@ const userSchema = new mongoose.Schema(
     blockedReason: {
       type: String,
       default: '',
-    }
+    },
+    resetPasswordOTP: {
+      type: String,
+    },
+    resetPasswordExpire: {
+      type: Date,
+    },
   },
   {
     timestamps: true,

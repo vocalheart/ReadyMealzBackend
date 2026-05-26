@@ -3,17 +3,25 @@ const router = express.Router();
 const UserProfile = require('./profile/profile.controller.js');
 const  protect = require('../middleware/authMiddleware.js'); // Auth Middleware
 const UserAddress = require('../UserMangement/Address/address.js')
+const UserPassword = require('./AuthController/forgetPassword.js');
+
 /**
  * =========================================
  * USER PROFILE ROUTES (Protected)
  * Base: /api/user
  * =========================================
  */
+
+
+
+
+router.use('/public' , UserPassword)
 /**
  *  Get Logged In User Profile
  * Fields: name, email, mobile, role, profileImage
  * GET /api/user/me
- */
+ **/
+
 router.get('/me', protect, UserProfile.getMyProfile);
 
 //
@@ -46,5 +54,7 @@ router.post('/forgot-password', UserProfile.forgotPassword);
  * PUT /api/user/reset-password
  */
 router.put('/reset-password', UserProfile.resetPassword);
+
+
 
 module.exports = router;

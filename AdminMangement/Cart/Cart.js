@@ -20,28 +20,20 @@ const handleValidationErrors = (req, res, next) => {
   }
   next();
 };
+
 // ======================== ADD TO CART ========================
-router.post(
-  "/add",
-  AuthMiddleware,
-  validateMealId,
-  validateQuantity,
-  handleValidationErrors,
-  async (req, res) => {
+router.post("/add",AuthMiddleware,validateMealId,validateQuantity,handleValidationErrors,async (req, res) => {
     try {
       const userId = req.user.id;
       const { mealId, quantity } = req.body;
-
       // ================= FETCH MEAL =================
       const meal = await Meal.findById(mealId);
-
       if (!meal) {
         return res.status(404).json({
           success: false,
           message: "Meal not found"
         });
       }
-
       // ================= CHECK AVAILABILITY =================
       if (!meal.isAvailable || meal.status === "inactive") {
         return res.status(400).json({
@@ -49,7 +41,6 @@ router.post(
           message: "This meal is currently unavailable"
         });
       }
-
       // ================= FIND OR CREATE CART =================
       let cart = await Cart.findOne({ user: userId });
 
@@ -207,17 +198,10 @@ router.get('/',AuthMiddleware,async (req, res) => {
 );
 
 // ======================== UPDATE CART ITEM ========================
-router.put(
-  '/update',
-  AuthMiddleware,
-  validateMealId,
-  validateQuantity,
-  handleValidationErrors,
-  async (req, res) => {
+router.put('/update',AuthMiddleware,validateMealId,validateQuantity,handleValidationErrors,async (req, res) => {
     try {
       const { mealId, quantity } = req.body;
       const userId = req.user.id; //FIX: Use _id not id
-
       // Fetch meal
       const meal = await Meal.findById(mealId);
       if (!meal) {
