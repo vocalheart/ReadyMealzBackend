@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const BulkOrderQuote = require("../../AdminMangement/models/BulkOrderQuoteSchema");
+const BulkOrderQuote = require("../../AdminMangement/models/Bulkorderquoteschema.js");
 const PartnerMiddleware = require("../middleware/PartnerMiddleware");
 
 // ======================================================
