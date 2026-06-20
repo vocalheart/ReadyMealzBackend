@@ -1,225 +1,504 @@
 const express = require('express');
 const router = express.Router();
 const { validationResult, body } = require('express-validator');
+const geolib = require('geolib');
+const crypto = require('crypto');
+
 const protect = require('../../middleware/FullRoleMiddleware');
 const authorizeRoles = require('../../middleware/roleMiddleware');
 const Order = require('../models/OrderSchema');
 const Cart = require('../models/CartSchema');
 const Meal = require('../models/meal');
-const User = require('../../UserMangement/models/User');
-const razorpay = require("./config/Razorpay");
-const crypto = require("crypto");
-const Address = require('../../UserMangement/models/Address.schema'); //
+const razorpay = require('./config/Razorpay');
+const Address = require('../../UserMangement/models/Address.schema');
 
-/* ======================== VALIDATION MIDDLEWARE ======================== */
+/* ─── Validation helpers ─────────────────────── */
 const validateDeliveryAddress = [
-  body('deliveryAddress')
-    .notEmpty()
-    .withMessage('Delivery address ID is required')
-    .isMongoId()
-    .withMessage('Invalid address ID')
+  body('deliveryAddress').notEmpty().withMessage('Delivery address ID is required').isMongoId().withMessage('Invalid address ID'),
 ];
-
 const validatePaymentMethod = body('paymentMethod')
-  .isIn(['cod', 'online', 'upi', 'wallet'])
-  .withMessage('Invalid payment method');
+  .isIn(['cod', 'online', 'upi', 'wallet']).withMessage('Invalid payment method');
 
-// Handle validation errors
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      success: false,
-      message: 'Validation failed',
-      errors: errors.array().map(err => ({ field: err.param, message: err.msg }))
-    });
-  }
+  if (!errors.isEmpty())
+    return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array().map(e => ({ field: e.param, message: e.msg })) });
   next();
 };
 
-/* ======================== USER ROUTES ======================== */
+/* ─── calcPricing ────────────────────────────────
+   Returns all charge fields needed to save the order.
+   Throws a descriptive Error on business-rule violations
+   so the route can catch and return a 400.
+   ─────────────────────────────────────────────── */
+const calcPricing = (branch, address, subtotal) => {
+  // Distance
+  const distanceKm = geolib.getDistance(
+    { lat: branch.location.lat, lng: branch.location.lng },
+    { lat: address.location.lat, lng: address.location.lng }
+  ) / 1000;
 
-/**
- * CREATE ORDER - User creates order from cart or custom items
- * POST /api/orders/create
- */
-router.post('/create', protect, authorizeRoles('user'), validateDeliveryAddress, validatePaymentMethod, handleValidationErrors, async (req, res) => {
-  try {
-    // FIX: Use both _id and id to handle different middleware implementations
-    const userId = req.user._id || req.user.id;
-    console.log('Creating order for user:', userId);
-    const { items, paymentMethod = 'cod', paymentReference = null, specialRequests = '', useCart = true, subtotal = 0, tax = 0, deliveryCharge = 0 } = req.body;
-    let orderItems = [];
-    let finalSubtotal = subtotal;
-    const address = await Address.findById(req.body.deliveryAddress);
-    if (!address) {
-      return res.status(404).json({
-        success: false,
-        message: "Address not found"
-      });
-    }
-    // Get items from cart if useCart is true
-    if (useCart) {
-      console.log('Finding cart for user:', userId);
-      const cart = await Cart.findOne({ user: userId }).populate('items.meal');
-      if (!cart || cart.items.length === 0) {
-        console.log('Cart empty or not found');
-        return res.status(400).json({
-          success: false,
-          message: 'Cart is empty. Add items before creating order.'
-        });
-      }
-      const validCartItems = cart.items.filter(item => item.meal);
-      if (validCartItems.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "All cart meals are invalid or deleted"
-        });
-      };
-      orderItems = validCartItems.map(item => ({
-        meal: item.meal._id,
-        name: item.meal.name,
-        price: item.price,
-        quantity: item.quantity,
-        totalPrice: item.totalPrice
-      }));
-      finalSubtotal = cart.cartTotal;
-      console.log(' Cart items found:', orderItems.length);
-    } else {
-      // Validate custom items array
-      if (!items || items.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Items are required'
-        });
-      }
+  // ✅ Delivery radius check
+  if (distanceKm > branch.deliveryRadiusKm)
+    throw Object.assign(new Error('Delivery not available in your area'), {
+      statusCode: 400,
+      extra: { yourDistance: Number(distanceKm.toFixed(2)), deliveryRadiusKm: branch.deliveryRadiusKm },
+    });
 
-      // Validate each item and fetch meal details
-      for (const item of items) {
-        const meal = await Meal.findById(item.meal);
-        if (!meal) {
-          return res.status(404).json({ success: false, message: `Meal ${item.meal} not found` });
-        };
-        if (!meal.canBePurchased()) {
-          return res.status(400).json({
-            success: false,
-            message: `${meal.name} is currently unavailable`
-          });
-        };
-        // Validate stock
-        if (!meal.isUnlimitedStock && item.quantity > meal.stock) {
-          return res.status(400).json({
-            success: false,
-            message: `Only ${meal.stock} of ${meal.name} available in stock`,
-            availableStock: meal.stock
-          });
-        }
-        orderItems.push({
-          meal: meal._id,
-          name: meal.name,
-          price: item.price || meal.price,
-          quantity: item.quantity,
-          totalPrice: (item.price || meal.price) * item.quantity
-        });
-        finalSubtotal += (item.price || meal.price) * item.quantity;
-      }
-    };
-    // Calculate order total
-    // 1. Pehle total calculate karo
-    const finalTax = tax || finalSubtotal * 0.05;
-    const finalDeliveryCharge = deliveryCharge || 40;
-    const orderTotal = finalSubtotal + finalTax + finalDeliveryCharge;
-    console.log(' Order totals:', { finalSubtotal, finalTax, finalDeliveryCharge, orderTotal });
-    // 2. Fir Razorpay order banao
-    let razorpayOrder = null;
-    if (paymentMethod === "online") {
-      const options = {
-        amount: orderTotal * 100,
-        currency: "INR",
-        receipt: `order_${Date.now()}`
-      };
-      razorpayOrder = await razorpay.orders.create(options);
-    }
-    // Create order
-    const order = new Order({
-      user: userId,
-      items: orderItems,
-      subtotal: finalSubtotal,
-      tax: finalTax,
-      deliveryCharge: finalDeliveryCharge,
-      orderTotal: orderTotal,
-      paymentMethod,
-      paymentReference: razorpayOrder ? razorpayOrder.id : paymentReference || null,
-      deliveryAddress: address._id,
-      specialRequests: specialRequests.trim() || '',
-      orderStatus: 'placed',
-      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'pending'
-    });
-    await order.save();
-    console.log(' Order saved:', order._id);
-    // Cart clear ONLY for COD
-    if (useCart && paymentMethod === "cod") {
-      await Cart.updateOne(
-        { user: userId },
-        { items: [], cartTotal: 0, totalItems: 0 }
-      );
-    };
-    // Populate order details
-    await order.populate([
-      { path: 'user', select: 'name email phone' },
-      { path: 'items.meal', select: 'name slug price images' },
-      { path: 'deliveryAddress' } // ADD THIS
-    ]);
-    res.status(201).json({success: true,message: 'Order created successfully', data: {
-        order,
-        razorpayOrder, //IMPORTANT
-        orderNumber: order.orderNumber,
-        estimatedDeliveryTime: order.estimatedDeliveryTime
-      }
-    });
-  } catch (error) {
-    console.error(' Create order error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create order',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
+  // Delivery slab (or free)
+  let deliveryCharge = 0;
+  if (subtotal < branch.freeDeliveryAbove) {
+    const slabs = branch.deliveryCharges || [];
+    const match = slabs.find(s => distanceKm >= s.minKm && distanceKm <= s.maxKm);
+    deliveryCharge = match ? match.charge : (slabs.at(-1)?.charge ?? 0);
   }
-}
+
+  // Surge
+  let surgeCharge = 0;
+  if (branch.surgePricing?.enabled) {
+    const hour = new Date().getHours();
+    const day = new Date().getDay();
+    if (hour >= 12 && hour <= 15) surgeCharge += branch.surgePricing.lunchExtraCharge || 0;
+    if (hour >= 19 && hour <= 23) surgeCharge += branch.surgePricing.dinnerExtraCharge || 0;
+    if (day === 0 || day === 6) surgeCharge += branch.surgePricing.weekendExtraCharge || 0;
+  }
+
+  const packagingCharge = branch.packagingCharge || 0;
+  const gstPercentage = branch.gstPercentage || 0;
+  const taxableAmount = subtotal + deliveryCharge + surgeCharge + packagingCharge;
+  const tax = Number(((taxableAmount * gstPercentage) / 100).toFixed(2));
+  const orderTotal = Number((taxableAmount + tax).toFixed(2));
+
+  return { distanceKm: Number(distanceKm.toFixed(2)), deliveryCharge, surgeCharge, packagingCharge, tax, orderTotal };
+};
+
+/* ═══════════════════════════════════════════════
+   POST /create
+   ═══════════════════════════════════════════════ */
+router.post(
+  '/create',
+  protect, authorizeRoles('user'),
+  validateDeliveryAddress, validatePaymentMethod, handleValidationErrors,
+  async (req, res) => {
+    try {
+      const userId = req.user._id || req.user.id;
+      const { paymentMethod = 'cod', paymentReference = null, specialRequests = '', useCart = true, items } = req.body;
+
+      // ── Address ──────────────────────────────────────────────────────
+      const address = await Address.findById(req.body.deliveryAddress);
+      if (!address)
+        return res.status(404).json({ success: false, message: 'Address not found' });
+      if (!address.location?.lat || !address.location?.lng)
+        return res.status(400).json({ success: false, message: 'Address location missing' });
+
+      // ── Build order items + resolve branch ───────────────────────────
+      let orderItems = [];
+      let subtotal = 0;
+      let branch = null;
+
+      if (useCart) {
+        const cart = await Cart.findOne({ user: userId }).populate({
+          path: 'items.meal',
+          populate: { path: 'branch' },
+        });
+        if (!cart?.items?.length)
+          return res.status(400).json({ success: false, message: 'Cart is empty. Add items before creating order.' });
+
+        const validItems = cart.items.filter(item => item.meal);
+        if (!validItems.length)
+          return res.status(400).json({ success: false, message: 'All cart meals are invalid or deleted' });
+
+        branch = validItems[0].meal.branch;
+        subtotal = cart.cartTotal;
+        orderItems = validItems.map(item => ({
+          meal: item.meal._id, name: item.meal.name,
+          price: item.price, quantity: item.quantity, totalPrice: item.totalPrice,
+        }));
+      } else {
+        if (!items?.length)
+          return res.status(400).json({ success: false, message: 'Items are required' });
+
+        for (const item of items) {
+          const meal = await Meal.findById(item.meal).populate('branch');
+          if (!meal)
+            return res.status(404).json({ success: false, message: `Meal ${item.meal} not found` });
+          if (!meal.canBePurchased())
+            return res.status(400).json({ success: false, message: `${meal.name} is currently unavailable` });
+          if (!meal.isUnlimitedStock && item.quantity > meal.stock)
+            return res.status(400).json({ success: false, message: `Only ${meal.stock} of ${meal.name} available`, availableStock: meal.stock });
+
+          if (!branch) branch = meal.branch;
+          const lineTotal = (item.price || meal.price) * item.quantity;
+          subtotal += lineTotal;
+          orderItems.push({ meal: meal._id, name: meal.name, price: item.price || meal.price, quantity: item.quantity, totalPrice: lineTotal });
+        }
+      }
+
+      if (!branch)
+        return res.status(400).json({ success: false, message: 'Branch not found' });
+
+      // ── Branch status ─────────────────────────────────────────────────
+      if (!branch.isActive) return res.status(400).json({ success: false, message: 'Branch is inactive' });
+      if (!branch.isOpen) return res.status(400).json({ success: false, message: 'Branch is currently closed' });
+
+      // ── Minimum order ─────────────────────────────────────────────────
+      if (subtotal < branch.minimumOrderAmount)
+        return res.status(400).json({ success: false, message: `Minimum order amount is ₹${branch.minimumOrderAmount}`, currentSubtotal: subtotal });
+
+      // ── Pricing (throws 400-style Error on radius violation) ──────────
+      let pricing;
+      try {
+        pricing = calcPricing(branch, address, subtotal);
+      } catch (pErr) {
+        return res.status(pErr.statusCode || 400).json({ success: false, message: pErr.message, ...pErr.extra });
+      }
+
+      // ── Razorpay ──────────────────────────────────────────────────────
+      let razorpayOrder = null;
+      if (paymentMethod === 'online') {
+        razorpayOrder = await razorpay.orders.create({
+          amount: pricing.orderTotal * 100,
+          currency: 'INR',
+          receipt: `order_${Date.now()}`,
+        });
+      }
+
+
+      // ── COD FLOW ──────────────────────────────────────
+
+      if (paymentMethod === 'cod') {
+        const order = await new Order({
+          user: userId,
+          items: orderItems,
+          subtotal,
+          deliveryCharge:pricing.deliveryCharge,
+          surgeCharge:pricing.surgeCharge,
+          packagingCharge:pricing.packagingCharge,
+          tax:pricing.tax,
+          distanceKm:pricing.distanceKm,
+          orderTotal:pricing.orderTotal,
+          paymentMethod,
+          paymentReference:paymentReference || null,
+          deliveryAddress:address._id,
+          specialRequests:specialRequests.trim(),
+          orderStatus: 'placed',
+          paymentStatus: 'pending',
+        }).save();
+
+        // Clear cart
+        if (useCart) {
+
+          await Cart.updateOne(
+            { user: userId },
+            {
+              items: [],
+              cartTotal: 0,
+              totalItems: 0
+            }
+          );
+        }
+
+        return res.status(201).json({
+
+          success: true,
+
+          message:
+            'COD Order created successfully',
+
+          data: {
+            order
+          }
+        });
+      }
+      // ── ONLINE PAYMENT FLOW ───────────────────────────
+      return res.status(200).json({success: true,message:'Proceed to payment',
+        data: {razorpayOrder,orderData: { items: orderItems, subtotal,pricing,
+            deliveryAddress:
+              address._id,
+
+            paymentMethod,
+
+            specialRequests
+          }
+        }
+      });
+
+    } catch (err) {
+      console.error('[POST /create]', err);
+      return res.status(500).json({ success: false, message: 'Failed to create order', error: process.env.NODE_ENV === 'development' ? err.message : undefined });
+    }
+  }
 );
 
+/* =========================================================
+   VERIFY PAYMENT + CREATE ORDER AFTER SUCCESSFUL PAYMENT
+========================================================= */
 
+router.post(
+  "/verify-payment",
+  protect,
+  authorizeRoles("user"),
 
-router.post("/verify-payment", async (req, res) => {
-  try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSignature = crypto.createHmac("sha256", process.env.RAZORPAY_SECRET).update(body.toString()).digest("hex");
-    if (expectedSignature !== razorpay_signature) {
-      return res.status(400).json({ success: false, message: "Invalid payment" });
-    }
-    const order = await Order.findOne({
-      paymentReference: razorpay_order_id
-    });
-    if (order) {
-      order.paymentStatus = "paid";
-      order.paymentReference = razorpay_payment_id;
+  async (req, res) => {
+
+    try {
+
+      const {
+
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
+        orderData
+
+      } = req.body;
+
+      /* =========================================================
+         VALIDATION
+      ========================================================= */
+
+      if (
+        !razorpay_order_id ||
+        !razorpay_payment_id ||
+        !razorpay_signature
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            "Payment details missing"
+        });
+      }
+
+      if (!orderData) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            "Order data missing"
+        });
+      }
+
+      /* =========================================================
+         VERIFY RAZORPAY SIGNATURE
+      ========================================================= */
+
+      const expectedSignature = crypto
+
+        .createHmac(
+          "sha256",
+          process.env.RAZORPAY_SECRET
+        )
+
+        .update(
+          `${razorpay_order_id}|${razorpay_payment_id}`
+        )
+
+        .digest("hex");
+
+      /* =========================================================
+         INVALID SIGNATURE
+      ========================================================= */
+
+      if (
+        expectedSignature !==
+        razorpay_signature
+      ) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            "Invalid payment signature"
+        });
+      }
+
+      /* =========================================================
+         PREVENT DUPLICATE ORDERS
+      ========================================================= */
+
+      const existingOrder =
+        await Order.findOne({
+
+          paymentReference:
+            razorpay_payment_id
+        });
+
+      if (existingOrder) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            "Order already exists"
+        });
+      }
+
+      /* =========================================================
+         CREATE ORDER
+      ========================================================= */
+
+      const order = new Order({
+
+        user:
+          req.user._id ||
+          req.user.id,
+
+        items:
+          orderData.items,
+
+        subtotal:
+          orderData.subtotal,
+
+        deliveryCharge:
+          orderData.pricing
+            .deliveryCharge || 0,
+
+        surgeCharge:
+          orderData.pricing
+            .surgeCharge || 0,
+
+        packagingCharge:
+          orderData.pricing
+            .packagingCharge || 0,
+
+        tax:
+          orderData.pricing
+            .gstAmount || 0,
+
+        distanceKm:
+          orderData.pricing
+            .distanceKm || 0,
+
+        orderTotal:
+          orderData.pricing
+            .finalAmount || 0,
+
+        paymentMethod:
+          "online",
+
+        paymentReference:
+          razorpay_payment_id,
+
+        deliveryAddress:
+          orderData.deliveryAddress,
+
+        specialRequests:
+          orderData.specialRequests || "",
+
+        orderStatus:
+          "placed",
+
+        paymentStatus:
+          "paid"
+      });
+
+      /* =========================================================
+         SAVE ORDER
+      ========================================================= */
+
       await order.save();
-      //  NOW CLEAR CART
-      await Cart.updateOne({ user: order.user }, { items: [], cartTotal: 0, totalItems: 0 });
+
+      /* =========================================================
+         CLEAR USER CART
+      ========================================================= */
+
+      await Cart.updateOne(
+
+        {
+          user:
+            req.user._id ||
+            req.user.id
+        },
+
+        {
+          items: [],
+          cartTotal: 0,
+          totalItems: 0
+        }
+      );
+
+      /* =========================================================
+         POPULATE ORDER
+      ========================================================= */
+
+      await order.populate([
+
+        {
+
+          path: "user",
+
+          select:
+            "name email phone"
+        },
+
+        {
+
+          path: "items.meal",
+
+          select:
+            "name slug price images"
+        },
+
+        {
+
+          path:
+            "deliveryAddress"
+        }
+      ]);
+
+      /* =========================================================
+         SUCCESS RESPONSE
+      ========================================================= */
+
+      return res.status(200).json({
+
+        success: true,
+
+        message:
+          "Payment verified & order created successfully",
+
+        data: {
+
+          order,
+
+          orderNumber:
+            order.orderNumber,
+
+          estimatedDeliveryTime:
+            order.estimatedDeliveryTime
+        }
+      });
+
+    } catch (err) {
+
+      console.error(
+        "[verify-payment]",
+        err
+      );
+
+      return res.status(500).json({
+
+        success: false,
+
+        message:
+          err.message ||
+          "Payment verification failed"
+      });
     }
-    res.json({ success: true, message: "Payment successful" });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
   }
-});
-
-
+);
 
 /**
  * GET USER'S ORDERS
  * GET /api/orders/my-orders
- */
+ **/
+
 router.get('/my-orders', protect, authorizeRoles('user'),
   async (req, res) => {
     try {
@@ -231,23 +510,14 @@ router.get('/my-orders', protect, authorizeRoles('user'),
       // Filter by status if provided
       if (status) {
         query.orderStatus = status;
-      }
-
+      };
       const skip = (Number(page) - 1) * Number(limit);
       const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
-
       const [orders, total] = await Promise.all([
-        Order.find(query)
-          .populate('items.meal', 'name price images').populate('deliveryAddress')
-          .sort(sort)
-          .skip(skip)
-          .limit(Number(limit))
-          .lean(),
+        Order.find(query).populate('items.meal', 'name price images').populate('deliveryAddress').sort(sort).skip(skip).limit(Number(limit)).lean(),
         Order.countDocuments(query)
       ]);
-
       console.log('Orders found:', orders.length);
-
       res.status(200).json({
         success: true,
         message: 'Orders retrieved successfully',
@@ -275,52 +545,50 @@ router.get('/my-orders', protect, authorizeRoles('user'),
 /**
  * GET SINGLE ORDER DETAILS
  * GET /api/orders/:orderId
- */
-router.get('/:orderId', protect, authorizeRoles('user', 'admin', 'superadmin'),
-  async (req, res) => {
-    try {
-      const order = await Order.findById(req.params.orderId)
-        .populate('user', 'name email phone')
-        .populate('items.meal', 'name slug price description images');
+ **/
 
-      if (!order) {
-        return res.status(404).json({ success: false, message: 'Order not found' });
-      }
-      //  FIX: Proper user ID comparison
-      const requestUserId = (req.user._id || req.user.id).toString();
-      const orderUserId = order.user._id.toString();
-      console.log(' Order details check:');
-      console.log('  Request user:', requestUserId);
-      console.log('  Order user:', orderUserId);
-      console.log('  User role:', req.user.role);
-      // User can only view their own orders (unless admin)
-      if (req.user.role === 'user' && orderUserId !== requestUserId) {
-        return res.status(403).json({
-          success: false,
-          message: 'You do not have permission to view this order'
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        message: 'Order retrieved successfully',
-        data: order
-      });
-    } catch (error) {
-      console.error('❌ Get order error:', error);
-      res.status(500).json({
+router.get('/:orderId', protect, authorizeRoles('user', 'admin', 'superadmin'), async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.orderId)
+      .populate('user', 'name email phone')
+      .populate('items.meal', 'name slug price description images').populate(
+        'deliveryAddress',
+        'recipientName phoneNumber fullAddress city pincode state'
+      );
+    if (!order) {
+      return res.status(404).json({
         success: false,
-        message: 'Failed to retrieve order',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: 'Order not found'
       });
     }
+    const requestUserId = (req.user._id || req.user.id).toString();
+    const orderUserId = order.user._id.toString();
+    console.log('Order details check:');
+    console.log('Request user:', requestUserId);
+    console.log('Order user:', orderUserId);
+    console.log('User role:', req.user.role);
+    if (req.user.role === 'user' && orderUserId !== requestUserId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to view this order'
+      });
+    }
+    res.status(200).json({ success: true, message: 'Order retrieved successfully', data: order });
+  } catch (error) {
+    console.error('Get order error:', error);
+    res.status(500).json({
+      success: false, message: 'Failed to retrieve order', error: process.env.NODE_ENV === 'development'
+        ? error.message
+        : undefined
+    });
   }
+}
 );
 
 /**
  * CANCEL ORDER - User can cancel their own orders
  * PATCH /api/orders/:orderId/cancel
- */
+ **/
 router.patch('/:orderId/cancel', protect, authorizeRoles('user'), async (req, res) => {
   try {
     const { reason = 'Customer requested cancellation' } = req.body;
@@ -416,7 +684,7 @@ router.get('/admin/all-orders', protect, authorizeRoles('admin', 'superadmin'),
       // Search by order number or customer name
 
 
-      // Date range filter
+      // Date range filter--------------
       if (startDate || endDate) {
         query.createdAt = {};
         if (startDate) query.createdAt.$gte = new Date(startDate);
@@ -465,25 +733,18 @@ router.get('/admin/all-orders', protect, authorizeRoles('admin', 'superadmin'),
  * UPDATE ORDER STATUS (Admin)
  * PATCH /api/orders/admin/:orderId/status
  */
-router.patch('/admin/:orderId/status',
-  protect,
-  authorizeRoles('admin', 'superadmin'),
-  body('newStatus')
-    .isIn(['placed', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'])
-    .withMessage('Invalid status'),
+router.patch('/admin/:orderId/status', protect, authorizeRoles('admin', 'superadmin'), body('newStatus').isIn(['placed', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled']).withMessage('Invalid status'),
   handleValidationErrors,
   async (req, res) => {
     try {
       const { newStatus, notes = '' } = req.body;
       const order = await Order.findById(req.params.orderId);
-
       if (!order) {
         return res.status(404).json({
           success: false,
           message: 'Order not found'
         });
       }
-
       // Validate status transition
       const validTransitions = {
         placed: ['confirmed', 'cancelled'],
@@ -494,7 +755,6 @@ router.patch('/admin/:orderId/status',
         delivered: [],
         cancelled: []
       };
-
       if (!validTransitions[order.orderStatus].includes(newStatus)) {
         return res.status(400).json({
           success: false,
@@ -503,7 +763,6 @@ router.patch('/admin/:orderId/status',
           allowedTransitions: validTransitions[order.orderStatus]
         });
       }
-
       // Update status
       order.orderStatus = newStatus;
       order.statusHistory.push({
@@ -709,7 +968,7 @@ router.get('/admin/analytics/summary', protect, authorizeRoles('admin', 'superad
     });
   } catch (error) {
     console.error(' Analytics error:', error);
-    res.status(500).json({success: false,message: 'Failed to retrieve analytics',error: process.env.NODE_ENV === 'development' ? error.message : undefined});
+    res.status(500).json({ success: false, message: 'Failed to retrieve analytics', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
   }
 }
 );
@@ -718,75 +977,66 @@ router.get('/admin/analytics/summary', protect, authorizeRoles('admin', 'superad
  * EXPORT ORDERS (Admin) - CSV format
  * GET /api/orders/admin/export
  */
-router.get(
-  '/admin/export',
-  protect,
-  authorizeRoles('admin', 'superadmin'),
-  async (req, res) => {
-    try {
-      const { startDate, endDate, status } = req.query;
-
-      const query = {};
-      if (status) query.orderStatus = status;
-      if (startDate || endDate) {
-        query.createdAt = {};
-        if (startDate) query.createdAt.$gte = new Date(startDate);
-        if (endDate) query.createdAt.$lte = new Date(endDate);
-      }
-
-      const orders = await Order.find(query)
-        .populate('user', 'name email phone')
-        .populate('items.meal', 'name price').populate('deliveryAddress')
-        .lean();
-
-      if (orders.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'No orders found for export'
-        });
-      }
-
-      // Convert to CSV
-      const headers = [
-        'Order Number',
-        'Customer Name',
-        'Phone',
-        'Order Date',
-        'Status',
-        'Payment Status',
-        'Items',
-        'Order Total',
-        'Delivery Address'
-      ];
-
-      const rows = orders.map(order => [
-        order.orderNumber,
-        order.user.name,
-        order.user.phone,
-        new Date(order.createdAt).toLocaleDateString(),
-        order.orderStatus,
-        order.paymentStatus,
-        order.items.map(i => `${i.name} x${i.quantity}`).join('; '),
-        order.orderTotal,
-        `${order.deliveryAddress?.fullAddress}, ${order.deliveryAddress?.city}, ${order.deliveryAddress?.pincode}`
-      ]);
-
-      const csv = [headers, ...rows]
-        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-        .join('\n');
-
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename=orders-export.csv');
-      res.send(csv);
-    } catch (error) {
-      console.error('Export error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to export orders',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
+router.get('/admin/export', protect, authorizeRoles('admin', 'superadmin'), async (req, res) => {
+  try {
+    const { startDate, endDate, status } = req.query;
+    const query = {};
+    if (status) query.orderStatus = status;
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) query.createdAt.$lte = new Date(endDate);
     }
+
+    const orders = await Order.find(query)
+      .populate('user', 'name email phone')
+      .populate('items.meal', 'name price').populate('deliveryAddress')
+      .lean();
+
+    if (orders.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No orders found for export'
+      });
+    };
+
+    // Convert to CSV
+    const headers = [
+      'Order Number',
+      'Customer Name',
+      'Phone',
+      'Order Date',
+      'Status',
+      'Payment Status',
+      'Items',
+      'Order Total',
+      'Delivery Address'
+    ];
+
+    const rows = orders.map(order => [
+      order.orderNumber,
+      order.user.name,
+      order.user.phone,
+      new Date(order.createdAt).toLocaleDateString(),
+      order.orderStatus,
+      order.paymentStatus,
+      order.items.map(i => `${i.name} x${i.quantity}`).join('; '),
+      order.orderTotal,
+      `${order.deliveryAddress?.fullAddress}, ${order.deliveryAddress?.city}, ${order.deliveryAddress?.pincode}`
+    ]);
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=orders-export.csv');
+    res.send(csv);
+  } catch (error) {
+    console.error('Export error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to export orders',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
+}
 );
 
 module.exports = router;

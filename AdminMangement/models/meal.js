@@ -37,6 +37,12 @@ const mealSchema = new mongoose.Schema(
       minlength: [2, 'Meal name must be at least 2 characters'],
       maxlength: [100, 'Meal name cannot exceed 100 characters']
     },
+    branch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+      index: true
+    },
 
     slug: {
       type: String,
@@ -72,7 +78,7 @@ const mealSchema = new mongoose.Schema(
       default: 0,
       min: [0, 'Discount price cannot be negative'],
       validate: {
-        validator: function(value) {
+        validator: function (value) {
           return value < this.price;
         },
         message: 'Discount price must be less than original price'
@@ -110,7 +116,7 @@ const mealSchema = new mongoose.Schema(
     images: {
       type: [imageSchema],
       validate: {
-        validator: function(images) {
+        validator: function (images) {
           return images.length > 0 || !this.isActive;
         },
         message: 'At least one image is required for active meals'
@@ -301,7 +307,7 @@ mealSchema.index({ createdAt: -1 });
 mealSchema.index({ averageRating: -1 });
 
 /* ================= PRE-SAVE MIDDLEWARE ================= */
-mealSchema.pre('save', function() {
+mealSchema.pre('save', function () {
   // Generate slug from name if not provided
   if (!this.slug && this.name) {
     this.slug = this.name
@@ -333,42 +339,42 @@ mealSchema.pre('save', function() {
 });
 
 /* ================= QUERY HELPERS ================= */
-mealSchema.query.active = function() {
+mealSchema.query.active = function () {
   return this.where({ status: 'active', isDeleted: false });
 };
 
-mealSchema.query.available = function() {
+mealSchema.query.available = function () {
   return this.where({ isAvailable: true, isDeleted: false });
 };
 
-mealSchema.query.featured = function() {
+mealSchema.query.featured = function () {
   return this.where({ isFeatured: true, isDeleted: false });
 };
 
-mealSchema.query.byCategory = function(categoryId) {
+mealSchema.query.byCategory = function (categoryId) {
   return this.where({ category: categoryId, isDeleted: false });
 };
 
 /* ================= INSTANCE METHODS ================= */
-mealSchema.methods.getEffectivePrice = function() {
+mealSchema.methods.getEffectivePrice = function () {
   if (this.discountPercentage > 0 && (!this.discountExpiry || this.discountExpiry > new Date())) {
     return this.discountPrice;
   }
   return this.price;
 };
 
-mealSchema.methods.getSavings = function() {
+mealSchema.methods.getSavings = function () {
   if (this.discountPercentage > 0) {
     return this.price - this.discountPrice;
   }
   return 0;
 };
 
-mealSchema.methods.isLowOnStock = function() {
+mealSchema.methods.isLowOnStock = function () {
   return !this.isUnlimitedStock && this.stock <= this.lowStockThreshold;
 };
 
-mealSchema.methods.getFormattedNutrition = function() {
+mealSchema.methods.getFormattedNutrition = function () {
   return {
     calories: this.nutrition.calories,
     protein: `${this.nutrition.protein}g`,
@@ -379,17 +385,17 @@ mealSchema.methods.getFormattedNutrition = function() {
   };
 };
 
-mealSchema.methods.canBePurchased = function() {
-  return this.isAvailable && this.status === 'active' && !this.isDeleted && 
-         (this.isUnlimitedStock || this.stock > 0);
+mealSchema.methods.canBePurchased = function () {
+  return this.isAvailable && this.status === 'active' && !this.isDeleted &&
+    (this.isUnlimitedStock || this.stock > 0);
 };
 
-mealSchema.methods.updateRating = function(newRating) {
+mealSchema.methods.updateRating = function (newRating) {
   // newRating should be 1-5
   if (newRating < 1 || newRating > 5) return;
 
   // Update breakdown
-  switch(newRating) {
+  switch (newRating) {
     case 5: this.ratingBreakdown.five++; break;
     case 4: this.ratingBreakdown.four++; break;
     case 3: this.ratingBreakdown.three++; break;
@@ -399,7 +405,7 @@ mealSchema.methods.updateRating = function(newRating) {
 
   // Recalculate average rating
   this.totalReviews++;
-  const totalRating = 
+  const totalRating =
     (this.ratingBreakdown.five * 5) +
     (this.ratingBreakdown.four * 4) +
     (this.ratingBreakdown.three * 3) +
@@ -410,19 +416,19 @@ mealSchema.methods.updateRating = function(newRating) {
 };
 
 /* ================= STATIC METHODS ================= */
-mealSchema.statics.getTopRated = function(limit = 10) {
+mealSchema.statics.getTopRated = function (limit = 10) {
   return this.find({ isDeleted: false, status: 'active' })
     .sort({ averageRating: -1 })
     .limit(limit);
 };
 
-mealSchema.statics.getFeatured = function(limit = 10) {
+mealSchema.statics.getFeatured = function (limit = 10) {
   return this.find({ isFeatured: true, isDeleted: false })
     .sort({ createdAt: -1 })
     .limit(limit);
 };
 
-mealSchema.statics.searchByName = function(searchTerm) {
+mealSchema.statics.searchByName = function (searchTerm) {
   return this.find(
     { $text: { $search: searchTerm }, isDeleted: false },
     { score: { $meta: "textScore" } }

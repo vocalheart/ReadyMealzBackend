@@ -6,9 +6,8 @@ const Category = require("../models/category");
 const protect = require("../../middleware/FullRoleMiddleware");
 const authorizeRoles = require("../../middleware/roleMiddleware");
 const deleteFromS3 = require("../config/s3Delete");
-
+const Branch = require("../models/branchSchema");
 const router = express.Router();
-
 /* ─────────────────────────────────────────
    HELPER: generate slug from name
 ───────────────────────────────────────── */
@@ -100,6 +99,7 @@ router.post(
       const {
         name,
         price,
+        branch,
         description,
         categoryId,
         foodType,
@@ -139,6 +139,9 @@ router.post(
       }
       if (!price || isNaN(price) || Number(price) <= 0) {
         return res.status(400).json({ success: false, message: "Valid price is required" });
+      }
+      if (!branch) {
+        return res.status(400).json({success: false,message: "Branch is required"});
       }
       if (!req.files?.length) {
         return res.status(400).json({ success: false, message: "At least one image is required" });
@@ -200,6 +203,7 @@ router.post(
         name: name.trim(),
         slug,
         price: Number(price),
+        branch,
         description: description?.trim() || "",
         category: category?._id || null,
         foodType: foodType || null,
@@ -266,7 +270,7 @@ router.post(
     }
   }
 );
-router.put("/update-meal/:id",protect,authorizeRoles("admin", "superadmin"),
+router.put("/update-meal/:id", protect, authorizeRoles("admin", "superadmin"),
   upload.array("images", 5),
   handleValidationErrors,
   async (req, res) => {
@@ -387,8 +391,8 @@ router.put("/update-meal/:id",protect,authorizeRoles("admin", "superadmin"),
           updateData.discountPercentage = discountPercentage
             ? Number(discountPercentage)
             : Math.round(
-                ((finalPrice - finalDiscountPrice) / finalPrice) * 100
-              );
+              ((finalPrice - finalDiscountPrice) / finalPrice) * 100
+            );
         }
       }
 
@@ -618,7 +622,7 @@ router.get(
         Meal.find(query)
           .populate("category", "name")
           .populate("foodType", "name")
-          .populate("tags", "name")
+          .populate("tags", "name").populate("branch", "name")
           .sort(sort)
           .skip(skip)
           .limit(Number(limit)),
@@ -798,8 +802,9 @@ router.get(
    GET CATEGORIES (Admin)
    GET /get-category
 ───────────────────────────────────────── */
-router.get("/get-category",protect,authorizeRoles("admin", "superadmin"),
-  async (req, res) => {try {
+router.get("/get-category", protect, authorizeRoles("admin", "superadmin"),
+  async (req, res) => {
+    try {
       const categories = await Category.find({});
       if (categories.length === 0) {
         return res.status(200).json({

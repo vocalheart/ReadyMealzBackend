@@ -30,7 +30,6 @@ router.post('/create', AuthMiddleware, async (req, res) => {
 router.get('/', AuthMiddleware, async (req, res) => {
   try {
     const addresses = await Address.find({ user: req.user.id });
-
     res.json({
       success: true,
       count: addresses.length,
@@ -47,7 +46,7 @@ router.get('/', AuthMiddleware, async (req, res) => {
 // api/address/:id
 router.get('/:id', AuthMiddleware, async (req, res) => {
   try {
-    const address = await Address.findOne({
+    const address = await Address.findOne({ 
       _id: req.params.id,
       user: req.user.id
     });

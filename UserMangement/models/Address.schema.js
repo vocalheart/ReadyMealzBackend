@@ -8,6 +8,8 @@ const addressSchema = new mongoose.Schema({
   city: {type: String,required: true,trim: true},
   pincode: {type: String,required: true,match: [/^[0-9]{6}$/, "Pincode must be 6 digits"]},
   state: {type: String,required: true,default: "Madhya Pradesh"},
+  location: {lat: {type: Number,required: true},lng: {type: Number,required: true}
+},
   isDefault: {type: Boolean,default: false}
 }, { timestamps: true });
 

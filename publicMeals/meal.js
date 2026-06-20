@@ -2,6 +2,7 @@ const express = require("express");
 const Meal = require("../AdminMangement/models/meal.js");
 const Category = require("../AdminMangement/models/category.js");
 const router = express.Router();
+const Branch = require( "../AdminMangement/models/branchSchema.js");
 
 /**
  * ─────────────────────────────────────────────
@@ -22,77 +23,292 @@ const router = express.Router();
  *   limit         - number (default 12)
  * ─────────────────────────────────────────────
  */
-router.get("/meals", async (req, res) => {
-  try {
-    const {
-      search,
-      category,
-      foodType,
-      tags,
-      minPrice,
-      maxPrice,
-      isFeatured,
-      sortBy     = "createdAt",
-      sortOrder  = "desc",
-      page       = 1,
-      limit      = 12,
-    } = req.query;
+router.get("/meals",async (req, res) => {
+    try {
+      const {lat,lng,search,category,foodType,tags,minPrice,maxPrice,isFeatured,sortBy = "createdAt",sortOrder = "desc",page = 1,limit = 12,} = req.query;
+      // =========================================
+      // LOCATION REQUIRED
+      // =========================================
 
-    // Only show active, available, non-deleted meals publicly
-    const query = {
-      status:      "active",
-      isAvailable: true,
-      isDeleted:   false,
-    };
-    // Text search
-    if (search?.trim()) {
-      query.$text = { $search: search.trim() };
+      if (!lat || !lng) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          message:
+            "Latitude and longitude required"
+        });
+      }
+
+      // =========================================
+      // FIND NEAREST BRANCH
+      // =========================================
+
+      const nearestBranch =
+        await Branch.findOne({
+
+          isActive: true,
+
+          isOpen: true,
+
+          geoLocation: {
+
+            $near: {
+
+              $geometry: {
+
+                type: "Point",
+
+                coordinates: [
+                  Number(lng),
+                  Number(lat)
+                ]
+              },
+
+              $maxDistance:
+                10000 // 10 KM
+            }
+          }
+        });
+
+      // =========================================
+      // NO BRANCH FOUND
+      // =========================================
+
+      if (!nearestBranch) {
+
+        return res.status(404).json({
+
+          success: false,
+
+          message:
+            "We are not yet available in your location"
+        });
+      }
+
+      // =========================================
+      // QUERY
+      // =========================================
+
+      const query = {
+
+        branch:
+          nearestBranch._id,
+
+        status: "active",
+
+        isAvailable: true,
+
+        isDeleted: false,
+      };
+
+      // =========================================
+      // SEARCH
+      // =========================================
+
+      if (search?.trim()) {
+
+        query.$text = {
+          $search:
+            search.trim()
+        };
+      }
+
+      // =========================================
+      // FILTERS
+      // =========================================
+
+      if (category)
+        query.category = category;
+
+      if (foodType)
+        query.foodType = foodType;
+
+      if (
+        isFeatured !== undefined
+      ) {
+
+        query.isFeatured =
+          isFeatured === "true";
+      }
+
+      // =========================================
+      // TAGS
+      // =========================================
+
+      if (tags) {
+
+        const tagArray =
+          tags
+            .split(",")
+
+            .map(t => t.trim())
+
+            .filter(Boolean);
+
+        if (tagArray.length) {
+
+          query.tags = {
+            $in: tagArray
+          };
+        }
+      }
+
+      // =========================================
+      // PRICE RANGE
+      // =========================================
+
+      if (
+        minPrice ||
+        maxPrice
+      ) {
+
+        query.price = {};
+
+        if (minPrice)
+          query.price.$gte =
+            Number(minPrice);
+
+        if (maxPrice)
+          query.price.$lte =
+            Number(maxPrice);
+      }
+
+      // =========================================
+      // SORT
+      // =========================================
+
+      const allowedSortFields = [
+
+        "price",
+
+        "createdAt",
+
+        "averageRating",
+
+        "preparationTime"
+      ];
+
+      const sortField =
+        allowedSortFields.includes(sortBy)
+          ? sortBy
+          : "createdAt";
+
+      const sort = {
+
+        [sortField]:
+          sortOrder === "asc"
+            ? 1
+            : -1
+      };
+
+      const skip =
+        (Number(page) - 1)
+        * Number(limit);
+
+      // =========================================
+      // GET MEALS
+      // =========================================
+
+      const [meals, total] =
+        await Promise.all([
+
+          Meal.find(query)
+
+            .populate(
+              "category",
+              "name slug"
+            )
+
+            .populate(
+              "foodType",
+              "name"
+            )
+
+            .populate(
+              "tags",
+              "name"
+            )
+
+            .populate(
+              "branch",
+              "name city"
+            )
+
+            .select(
+              "-__v -createdBy -isDeleted"
+            )
+
+            .sort(sort)
+
+            .skip(skip)
+
+            .limit(Number(limit)),
+
+          Meal.countDocuments(query),
+        ]);
+
+      // =========================================
+      // RESPONSE
+      // =========================================
+
+      return res.status(200).json({
+
+        success: true,
+
+        branch: {
+
+          _id:
+            nearestBranch._id,
+
+          name:
+            nearestBranch.name,
+
+          city:
+            nearestBranch.city,
+
+          deliveryRadiusKm:
+            nearestBranch.deliveryRadiusKm
+        },
+
+        meals,
+
+        page:
+          Number(page),
+
+        limit:
+          Number(limit),
+
+        total,
+
+        totalPages:
+          Math.ceil(
+            total / Number(limit)
+          ),
+
+        count:
+          meals.length,
+      });
+
+    } catch (err) {
+
+      console.error(
+        "[PUBLIC GET-MEALS]",
+        err
+      );
+
+      return res.status(500).json({
+
+        success: false,
+
+        message:
+          "Failed to fetch meals"
+      });
     }
-    // Filters
-    if (category)   query.category = category;
-    if (foodType)   query.foodType = foodType;
-    if (isFeatured !== undefined) query.isFeatured = isFeatured === "true";
-    // Tags filter (comma-separated)
-    if (tags) {
-      const tagArray = tags.split(",").map((t) => t.trim()).filter(Boolean);
-      if (tagArray.length) query.tags = { $in: tagArray };
-    }
-    // Price range
-    if (minPrice || maxPrice) {
-      query.price = {};
-      if (minPrice) query.price.$gte = Number(minPrice);
-      if (maxPrice) query.price.$lte = Number(maxPrice);
-    }
-
-    const allowedSortFields = ["price", "createdAt", "averageRating", "preparationTime"];
-    const sortField = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
-    const sort = { [sortField]: sortOrder === "asc" ? 1 : -1 };
-
-    const skip = (Number(page) - 1) * Number(limit);
-
-    const [meals, total] = await Promise.all([
-      Meal.find(query)
-        .populate("category", "name slug")
-        .populate("foodType", "name")
-        .populate("tags", "name")
-        .select("-__v -createdBy -isDeleted").sort(sort).skip(skip).limit(Number(limit)),
-      Meal.countDocuments(query),
-    ]);
-
-    res.json({
-      success: true,
-      meals,
-      page:       Number(page),
-      limit:      Number(limit),
-      total,
-      totalPages: Math.ceil(total / Number(limit)),
-      count:      meals.length,
-    });
-  } catch (err) {
-    console.error("[PUBLIC GET-MEALS] Error:", err);
-    res.status(500).json({ success: false, message: "Failed to fetch meals" });
   }
-});
+);
+
 
 /**
  * ─────────────────────────────────────────────

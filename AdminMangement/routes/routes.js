@@ -17,12 +17,13 @@ const CreateOrder = require('../bulk-order/OrderCreate/Order.js');
 const Advertisement = require('../advertisement/Advertisement.js')
 const MealsOrder = require('../mealMangemnet/meals-orders.js');
 const TiffinSubscription = require('../Tiffin-Subscription/subscription.js');
-
+const Branch = require('../branch/branch.js');
+const calculateMealsPrice = require('../Cart/calculatePricing.js')
 router.use('/admin', FoodTypes)
 router.use('/admin', MealMangement)
 router.use('/admin', AuthController);
-
-
+router.use('/admin', Branch)
+router.use('/user', calculateMealsPrice)
 router.use('/tiffin', TiffinSubscription);
 
 //meals-order
